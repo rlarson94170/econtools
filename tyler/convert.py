@@ -218,6 +218,53 @@ def extract_keywords(md_text):
 
 
 # ---------------------------------------------------------------------------
+# Obsidian tags
+# ---------------------------------------------------------------------------
+
+def slugify_tag(text):
+    """Turn a keyword/phrase into a valid Obsidian tag body (no leading #).
+
+    Obsidian tags allow letters, digits, _, -, / and must contain at least one
+    non-numeric character. Spaces and underscores become hyphens.
+    """
+    text = text.strip().lower()
+    text = re.sub(r'[^\w\s/-]', '', text)   # drop punctuation except / and -
+    text = re.sub(r'[\s_]+', '-', text)      # spaces/underscores -> hyphen
+    text = re.sub(r'-{2,}', '-', text).strip('-/')
+    if not text or text.isdigit():           # Obsidian tags can't be purely numeric
+        return ""
+    return text
+
+
+def build_tags(keywords, jel):
+    """Build a deduplicated list of Obsidian tags from keywords and JEL codes.
+
+    Keywords become hyphenated tags (e.g. "economic history" -> economic-history).
+    JEL codes become nested tags (e.g. "N10" -> jel/N10) so they group in the
+    Obsidian tag pane. Returns a list of tag bodies without the leading '#'.
+    """
+    tags = []
+    if keywords:
+        for kw in re.split(r'[;,]', keywords):
+            t = slugify_tag(kw)
+            if t and len(t) >= 2:
+                tags.append(t)
+    if jel:
+        for code in re.split(r'[;,]', jel):
+            code = code.strip().upper()
+            if re.match(r'^[A-Z]\d{1,2}$', code):
+                tags.append(f'jel/{code}')
+    # Deduplicate, preserve order, cap to keep frontmatter tidy
+    seen = set()
+    out = []
+    for t in tags:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out[:20]
+
+
+# ---------------------------------------------------------------------------
 # Text cleaning
 # ---------------------------------------------------------------------------
 
@@ -374,6 +421,7 @@ def convert_one_pdf(pdf_path, output_path, bib_entries=None, keep_references=Fal
     abstract = extract_abstract(md_text)
     jel = extract_jel_codes(md_text)
     keywords = extract_keywords(md_text)
+    obsidian_tags = build_tags(keywords, jel)
 
     # BibTeX matching
     citekey = ""
@@ -399,6 +447,8 @@ def convert_one_pdf(pdf_path, output_path, bib_entries=None, keep_references=Fal
         fm_lines.append(f'jel: "{jel}"')
     if keywords:
         fm_lines.append(f'keywords: "{keywords}"')
+    if obsidian_tags:
+        fm_lines.append(f'tags: [{", ".join(obsidian_tags)}]')
     fm_lines.append(f'source_pdf: "{original_filename}"')
     fm_lines.append('---')
     fm_lines.append('')
@@ -425,6 +475,7 @@ def convert_one_pdf(pdf_path, output_path, bib_entries=None, keep_references=Fal
         'citekey': citekey,
         'jel': jel,
         'keywords': keywords,
+        'tags': obsidian_tags,
         'source_pdf': original_filename,
         'md_filename': os.path.basename(output_path),
         'body_tokens_approx': len(body.split()),  # rough word count as proxy
@@ -448,6 +499,7 @@ def build_index(metadata_list, output_path):
         '- Read this index to understand what each paper covers',
         '- Use Grep to search across all papers for specific terms or concepts',
         '- Read individual `papers/*.md` files only when you need full detail',
+        '- Open this folder as an Obsidian vault: each paper is linked via [[wikilinks]] and tagged from its keywords and JEL codes',
         '',
         '---',
         '',
@@ -464,7 +516,10 @@ def build_index(metadata_list, output_path):
             lines.append(f'**JEL:** {meta["jel"]}  ')
         if meta['keywords']:
             lines.append(f'**Keywords:** {meta["keywords"]}  ')
-        lines.append(f'**Full text:** `papers/{meta["md_filename"]}`  ')
+        if meta.get('tags'):
+            lines.append('**Tags:** ' + ' '.join(f'#{t}' for t in meta['tags']) + '  ')
+        note = meta['md_filename'][:-3] if meta['md_filename'].endswith('.md') else meta['md_filename']
+        lines.append(f'**Full text:** [[{note}]]  ')
         lines.append('')
         if meta['abstract']:
             lines.append(f'> {meta["abstract"]}')

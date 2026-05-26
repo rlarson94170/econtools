@@ -37,9 +37,12 @@ year: "2012"
 citekey: "acemoglu2012"       # if --bib provided
 jel: "N10, O10"               # if found in paper
 keywords: "institutions, ..."  # if found in paper
+tags: [institutions, jel/N10] # derived from keywords + JEL (for Obsidian)
 source_pdf: "Acemoglu_Robinson_2012.pdf"
 ---
 ```
+
+The output folder is also a ready-to-use **Obsidian vault**. Open `WIKI_DIR` in Obsidian (or drop it inside an existing vault) and it works immediately: the YAML frontmatter shows up as note properties, the `tags:` field populates the tag pane and graph, and the index links each paper via `[[wikilinks]]` so the graph view shows the literature as a hub. Plugins like Dataview can query papers by year, JEL, or citekey.
 
 ## Step-by-step instructions
 
@@ -125,3 +128,4 @@ Only do this if the user explicitly asks. The auto-generated index is sufficient
 - **Very large PDFs** (>100 pages): Convert fine but produce large markdown. Consider asking the user if they want to process only specific page ranges for book-length documents.
 - **Re-running**: Incremental by default — only re-converts new or changed PDFs. Use `--force` to re-convert everything.
 - **References trimmed by default**: The references/bibliography section is removed to save ~20–30% of tokens per paper. Use `--keep-references` if the user needs them.
+- **Tags are derived, not authoritative**: Obsidian `tags:` come from each paper's extracted keywords and JEL codes (spaces become hyphens, JEL codes become `jel/N10`-style nested tags). Papers without keywords or JEL codes get no tags. The index hub note (`index.md`) will itself appear under every tag, since it lists them all.
