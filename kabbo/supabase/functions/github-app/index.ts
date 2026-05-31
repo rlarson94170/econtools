@@ -6,8 +6,15 @@
 //
 // Routes (path suffix, since Supabase prefixes the function name):
 //   POST .../github-app            → signed App webhook (push/release/PR/install)
-//   GET  .../github-app/install    → ?api_key=KEY → redirect to GitHub install
-//   GET  .../github-app/callback   → GitHub returns here; bind installation→user
+//   GET  .../github-app/install    → ?token=SUPABASE_JWT (or api_key) → redirect
+//                                     to GitHub's install screen with a signed state
+//   GET  .../github-app/callback   → the App's GitHub "Callback URL". Requires
+//                                     "Request user authorization (OAuth) during
+//                                     installation" so GitHub returns our `state`
+//                                     (+ installation_id) here; we verify state
+//                                     and bind installation→user. The `code` is
+//                                     ignored. (The plain Setup URL does NOT
+//                                     carry state, so it can't be used for this.)
 //
 // Required secrets: GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY (PKCS8 PEM),
 // GITHUB_APP_WEBHOOK_SECRET, GITHUB_APP_SLUG. Optional: SITE_URL.
@@ -29,7 +36,7 @@ import {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SITE_URL = Deno.env.get("SITE_URL") || "https://kabbo.app";
-const APP_SLUG = Deno.env.get("GITHUB_APP_SLUG") || "kabbo";
+const APP_SLUG = Deno.env.get("GITHUB_APP_SLUG") || "kabbo-app";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

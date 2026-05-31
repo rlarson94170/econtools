@@ -18,6 +18,10 @@ dist-ssr
 .env.test
 vercel.env
 credentials.md
+kabbo-webhook-secret.txt
+supabase token kabbo CLI.txt
+# GitHub App private keys — never commit
+*.pem
 
 # Logo generation dev artifacts (regeneratable via `node generate-logo.mjs`)
 kabbo-logo-preview.png

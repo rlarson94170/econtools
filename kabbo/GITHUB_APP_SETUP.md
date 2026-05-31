@@ -9,29 +9,71 @@ Supabase secrets. ~15 minutes.
 GitHub → **Settings → Developer settings → GitHub Apps → New GitHub App**
 (register under the `johanfourieza` account; you can transfer to an org later).
 
-- **GitHub App name:** `Kabbo`
-- **Homepage URL:** `https://kabbo.app`
-- **Webhook → Active:** ✓
+Fill the form top to bottom. The headings below match the GitHub page exactly;
+leave anything not mentioned at its default.
+
+**GitHub App name**
+- `Kabbo App`  (the plain name "Kabbo" is reserved by an existing GitHub
+  account, so we use "Kabbo App". This is only the GitHub listing name – your
+  brand on kabbo.app is unchanged.)
+
+**Homepage URL**
+- `https://kabbo.app`
+
+**Identifying and authorizing users**
+- **Callback URL:**
+  `https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/github-app/callback`
+- **Expire user authorization tokens:** leave ticked (the default; we don't use
+  the token, so it doesn't matter).
+- **Request user authorization (OAuth) during installation:** ✅ **TICK THIS.**
+  This is the important one. It makes GitHub send a one-time `state` value back
+  to the Callback URL after install, which is how Kabbo knows *which Kabbo
+  account* is connecting. (The plain "Setup URL" does not carry this, so we use
+  the Callback URL instead.) Kabbo only reads this to match your account – it
+  never acts as you or reads your code through it.
+- **Enable Device Flow:** leave unticked.
+
+**Post installation**
+- **Setup URL (optional):** leave blank.
+- **Redirect on update:** leave unticked. (When you add/remove repos later,
+  Kabbo is told automatically via the webhook – no redirect needed.)
+
+**Webhook**
+- **Active:** ✅ tick.
 - **Webhook URL:**
   `https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/github-app`
-- **Webhook secret:** generate a long random string — save it (→ `GITHUB_APP_WEBHOOK_SECRET`)
-- **Setup URL (after install):**
-  `https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/github-app/callback`
-  and tick **"Redirect on update"**.
-- **Repository permissions:**
-  - Contents → **Read-only**
-  - Metadata → **Read-only** (auto-selected)
-  - Pull requests → **Read-only**
-- **Subscribe to events:** Push, Release, Pull request, Installation,
-  Installation repositories.
-- **Where can this app be installed:** "Any account" (or "Only this account"
-  while testing).
+- **Secret:** paste a long random string and save it (→ `GITHUB_APP_WEBHOOK_SECRET`).
+  Generate one with: `openssl rand -hex 32`
 
-Create the App. Then on its page:
+**Permissions → Repository permissions** (open the section and set three;
+leave every other permission at "No access")
+- **Contents:** Read-only
+- **Metadata:** Read-only (GitHub selects this automatically)
+- **Pull requests:** Read-only
+
+**Permissions → Organization permissions:** none (leave all "No access").
+**Permissions → Account permissions:** none (leave all "No access").
+
+**Subscribe to events** (these checkboxes appear once the permissions above are
+set)
+- ✅ **Push**
+- ✅ **Release**
+- ✅ **Pull request**
+- Leave *Installation target*, *Meta*, and *Security advisory* unticked. (The
+  "installation" and "installation repositories" events are delivered to every
+  GitHub App automatically – they aren't in this list and need no checkbox.)
+
+**Where can this GitHub App be installed?**
+- **Only on this account** while you test. Switch to **Any account** later when
+  you want other academics to be able to install Kabbo. (You can change this any
+  time on the App's settings page.)
+
+Click **Create GitHub App**. Then on its page:
 
 - Note the **App ID** (→ `GITHUB_APP_ID`).
-- Note the **public slug** in the App's URL `github.com/apps/<slug>` — if it
-  isn't `kabbo`, set `GITHUB_APP_SLUG` to the actual slug.
+- Note the **public slug** in the App's URL `github.com/apps/<slug>`. For the
+  name "Kabbo App" this should be `kabbo-app`. Confirm it from the URL and set
+  `GITHUB_APP_SLUG` to that exact value in step 2.
 - **Generate a private key** → downloads a `.pem` (PKCS#1). Convert to PKCS#8
   (Web Crypto needs PKCS#8):
 
@@ -44,13 +86,17 @@ Create the App. Then on its page:
 
 ```bash
 supabase secrets set \
-  GITHUB_APP_ID=123456 \
-  GITHUB_APP_SLUG=kabbo \
-  GITHUB_APP_WEBHOOK_SECRET='the-random-string-from-step-1' \
+  GITHUB_APP_ID=3922955 \
+  GITHUB_APP_SLUG=kabbo-app \
+  GITHUB_APP_WEBHOOK_SECRET='<paste the value from kabbo-webhook-secret.txt>' \
   SITE_URL='https://kabbo.app'
 # Multiline PEM — pass the file contents:
 supabase secrets set GITHUB_APP_PRIVATE_KEY="$(cat kabbo.pkcs8.pem)"
 ```
+
+(App ID `3922955` and slug `kabbo-app` are this App's real values – they aren't
+secret. GitHub also shows a Client ID; we don't need it, the App ID is what the
+server uses to mint tokens.)
 
 (`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` already exist for edge functions.)
 

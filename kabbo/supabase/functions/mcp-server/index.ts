@@ -928,7 +928,6 @@ async function manageStringArray(
 }
 
 const app = new Hono();
-const transport = new StreamableHttpTransport();
 
 function getApiKey(req: Request): string | null {
   const url = new URL(req.url);
@@ -940,8 +939,19 @@ app.all("/*", async (c) => {
   if (!apiKey) {
     return c.json({ error: "Missing API key. Pass as ?api_key=YOUR_KEY query param or x-api-key header." }, 401);
   }
-  const server = createMcpServer(apiKey);
-  return await transport.handleRequest(c.req.raw, server);
+  // mcp-lite 0.10.0: build a fresh server + transport per request (the server is
+  // scoped to this API key, and transport.bind mutates transport state, so a
+  // shared transport would race across concurrent requests). bind() returns the
+  // HTTP handler; handleRequest is private.
+  try {
+    const server = createMcpServer(apiKey);
+    const transport = new StreamableHttpTransport();
+    const handler = transport.bind(server);
+    return await handler(c.req.raw);
+  } catch (e) {
+    console.error("mcp-server error:", e);
+    return c.json({ error: "Internal server error" }, 500);
+  }
 });
 
 Deno.serve(app.fetch);
