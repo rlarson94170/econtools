@@ -105,18 +105,18 @@ async function upsertFromRepo(
   let match: { id: string; stage: string } | null = null;
   const byId = await supabase.from("publications")
     .select("id, stage").eq("owner_id", userId).eq("github_repo_id", repo.id)
-    .is("deleted_at", null).limit(1).maybeSingle();
+    .limit(1).maybeSingle();
   match = byId.data;
   if (!match) {
     const byUrl = await supabase.from("publications")
       .select("id, stage").eq("owner_id", userId).eq("github_repo", repo.html_url)
-      .is("deleted_at", null).limit(1).maybeSingle();
+      .limit(1).maybeSingle();
     match = byUrl.data;
   }
   if (!match) {
     const byTitle = await supabase.from("publications")
       .select("id, stage").eq("owner_id", userId).ilike("title", title)
-      .is("deleted_at", null).limit(1).maybeSingle();
+      .limit(1).maybeSingle();
     match = byTitle.data;
   }
 

@@ -205,8 +205,7 @@ function createMcpServer(apiKey: string) {
       const { data: pubs } = await supabase
         .from("publications")
         .select("id, title, stage, updated_at, stage_history, target_year")
-        .eq("owner_id", userId)
-        .is("deleted_at", null);
+        .eq("owner_id", userId);
 
       const now = Date.now();
       const stageCounts: Record<string, number> = {};
@@ -256,8 +255,7 @@ function createMcpServer(apiKey: string) {
       let q = supabase
         .from("publications")
         .select("id, title, authors, stage, notes, themes, grants, target_year, output_type, updated_at")
-        .eq("owner_id", userId)
-        .is("deleted_at", null);
+        .eq("owner_id", userId);
 
       if (params.stage) q = q.eq("stage", String(params.stage));
       if (params.year) q = q.eq("target_year", Number(params.year));
@@ -417,8 +415,7 @@ function createMcpServer(apiKey: string) {
       const { data: pubs } = await supabase
         .from("publications")
         .select("id, title, stage, authors, themes, grants, output_type, target_year, stage_history, created_at, updated_at")
-        .eq("owner_id", userId)
-        .is("deleted_at", null);
+        .eq("owner_id", userId);
 
       const all = pubs || [];
       const currentYear = new Date().getFullYear();
@@ -501,7 +498,7 @@ function createMcpServer(apiKey: string) {
         if (!m.user_id) continue;
         const { data: pubs } = await supabase
           .from("publications").select("id, title, stage, updated_at")
-          .eq("owner_id", m.user_id).is("deleted_at", null);
+          .eq("owner_id", m.user_id);
 
         const stageCounts: Record<string, number> = {};
         const stalledPapers: string[] = [];
@@ -545,7 +542,7 @@ function createMcpServer(apiKey: string) {
       let q = supabase
         .from("publications")
         .select("id, title, authors, stage, target_year, target_journal, output_type, notes")
-        .eq("owner_id", userId).is("deleted_at", null);
+        .eq("owner_id", userId);
 
       if (params.stage) q = q.eq("stage", String(params.stage));
       if (params.year) q = q.eq("target_year", Number(params.year));
@@ -611,8 +608,7 @@ function createMcpServer(apiKey: string) {
 
       let q = supabase
         .from("publications").select("id, title, stage, authors, updated_at, target_year")
-        .eq("owner_id", userId).is("deleted_at", null)
-        .neq("stage", "published").lt("updated_at", cutoff)
+        .eq("owner_id", userId)        .neq("stage", "published").lt("updated_at", cutoff)
         .order("updated_at", { ascending: true });
       if (params.stage) q = q.eq("stage", String(params.stage));
 
@@ -794,7 +790,7 @@ function createMcpServer(apiKey: string) {
       const { userId, supabase } = await getAuthenticatedUser(apiKey);
       const { data: pubs } = await supabase
         .from("publications").select("id, title, stage, updated_at")
-        .eq("owner_id", userId).is("deleted_at", null);
+        .eq("owner_id", userId);
       const now = Date.now();
       const byStage: Record<string, number> = {};
       VALID_STAGES.forEach(s => byStage[s] = 0);
@@ -817,7 +813,7 @@ function createMcpServer(apiKey: string) {
       const { data } = await supabase
         .from("publications")
         .select("id, title, stage, authors, themes, grants, target_year, target_journal, github_repo, overleaf_link, updated_at")
-        .eq("owner_id", userId).is("deleted_at", null).order("updated_at", { ascending: false });
+        .eq("owner_id", userId).order("updated_at", { ascending: false });
       return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
     },
   );
@@ -829,7 +825,7 @@ function createMcpServer(apiKey: string) {
       const { userId, supabase } = await getAuthenticatedUser(apiKey);
       const { data } = await supabase
         .from("publications").select("*")
-        .eq("id", params.id).eq("owner_id", userId).is("deleted_at", null).maybeSingle();
+        .eq("id", params.id).eq("owner_id", userId).maybeSingle();
       return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
     },
   );
