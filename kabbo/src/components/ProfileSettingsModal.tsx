@@ -45,7 +45,10 @@ function ApiKeysSection({ userId }: { userId: string }) {
   const [newKeyName, setNewKeyName] = useState('');
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  // Derive the project ref from VITE_SUPABASE_URL (always set); fall back to the
+  // optional VITE_SUPABASE_PROJECT_ID. Avoids "undefined.supabase.co" URLs in prod.
+  const projectId = (import.meta.env.VITE_SUPABASE_URL || '').match(/\/\/([^.]+)\.supabase\.co/)?.[1]
+    || import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const ingestUrl = `https://${projectId}.supabase.co/functions/v1/ingest-publications`;
 
   const fetchKeys = async () => {
@@ -243,7 +246,10 @@ function GithubAppCard({ userId }: { userId: string }) {
 }
 
 function IntegrationGuide({ userId }: { userId: string }) {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  // Derive the project ref from VITE_SUPABASE_URL (always set); fall back to the
+  // optional VITE_SUPABASE_PROJECT_ID. Avoids "undefined.supabase.co" URLs in prod.
+  const projectId = (import.meta.env.VITE_SUPABASE_URL || '').match(/\/\/([^.]+)\.supabase\.co/)?.[1]
+    || import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const ingestUrl = `https://${projectId}.supabase.co/functions/v1/ingest-publications`;
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/api-publications`;
   const mcpUrl = `https://${projectId}.supabase.co/functions/v1/mcp-server`;

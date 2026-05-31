@@ -11,8 +11,10 @@ export interface GithubInstallation {
   created_at: string;
 }
 
-const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-const installUrl = `https://${projectId}.supabase.co/functions/v1/github-app/install`;
+// Derive the functions base from VITE_SUPABASE_URL (always set), not
+// VITE_SUPABASE_PROJECT_ID (not configured in production → "undefined").
+const FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const installUrl = `${FUNCTIONS_BASE}/github-app/install`;
 
 /**
  * Reads the user's connected GitHub App installations and starts the
