@@ -1,173 +1,21 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  extractStageTag,
+  fetchKabboYaml,
+  hashKey,
+  normalizeStage,
+  repoNameToTitle,
+  verifySignature,
+} from "../_shared/github.ts";
+
+// Legacy per-repo webhook. The shared helpers now back both this and the
+// Kabbo GitHub App (github-app). New users should prefer the GitHub App.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
-
-const VALID_STAGES = [
-  "idea", "draft", "submitted", "revise_resubmit",
-  "resubmitted", "accepted", "published",
-];
-
-// Map common stage aliases
-function normalizeStage(stage: string): string | null {
-  const map: Record<string, string> = {
-    idea: "idea", draft: "draft", wip: "draft",
-    submitted: "submitted", "under-review": "submitted",
-    revise_resubmit: "revise_resubmit", "revise-resubmit": "revise_resubmit",
-    "r&r": "revise_resubmit", resubmitted: "resubmitted",
-    accepted: "accepted", forthcoming: "accepted",
-    published: "published",
-  };
-  const key = stage.toLowerCase().trim();
-  return map[key] || (VALID_STAGES.includes(key) ? key : null);
-}
-
-// Verify GitHub webhook HMAC-SHA256 signature
-async function verifySignature(
-  payload: string,
-  signature: string,
-  secret: string
-): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
-  const computed =
-    "sha256=" +
-    Array.from(new Uint8Array(sig))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  // Constant-time comparison
-  if (computed.length !== signature.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < computed.length; i++) {
-    mismatch |= computed.charCodeAt(i) ^ signature.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
-
-// Convert repo name to human-readable title
-function repoNameToTitle(name: string): string {
-  return name
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-// Extract [stage:xxx] tag from commit message
-function extractStageTag(message: string): string | null {
-  const match = message.match(/\[stage:([^\]]+)\]/i);
-  if (!match) return null;
-  return normalizeStage(match[1]);
-}
-
-// Fetch and parse .kabbo.yaml from a GitHub repo's default branch
-interface KabboYaml {
-  title?: string;
-  authors?: string[];
-  stage?: string;
-  output_type?: string;
-  target_year?: number;
-  themes?: string[];
-  grants?: string[];
-  notes?: string;
-  overleaf_url?: string;
-  links?: string[];
-}
-
-async function fetchKabboYaml(
-  repoFullName: string,
-  defaultBranch: string
-): Promise<KabboYaml | null> {
-  try {
-    const url = `https://raw.githubusercontent.com/${repoFullName}/${defaultBranch}/.kabbo.yaml`;
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "Kabbo-Webhook/1.0" },
-    });
-    if (!resp.ok) return null;
-    const text = await resp.text();
-    return parseSimpleYaml(text);
-  } catch {
-    return null;
-  }
-}
-
-// Minimal YAML parser for flat key-value + simple arrays (no dependency needed)
-function parseSimpleYaml(text: string): KabboYaml {
-  const result: Record<string, unknown> = {};
-  const lines = text.split("\n");
-  let currentKey = "";
-  let currentArray: string[] | null = null;
-
-  for (const line of lines) {
-    // Skip comments and empty lines
-    if (line.trim().startsWith("#") || line.trim() === "") {
-      if (currentArray && currentKey) {
-        result[currentKey] = currentArray;
-        currentArray = null;
-        currentKey = "";
-      }
-      continue;
-    }
-
-    // Array item
-    const arrayMatch = line.match(/^\s+-\s+(.+)$/);
-    if (arrayMatch && currentKey) {
-      if (!currentArray) currentArray = [];
-      currentArray.push(arrayMatch[1].trim().replace(/^["']|["']$/g, ""));
-      continue;
-    }
-
-    // Flush previous array
-    if (currentArray && currentKey) {
-      result[currentKey] = currentArray;
-      currentArray = null;
-    }
-
-    // Key-value pair
-    const kvMatch = line.match(/^(\w[\w_]*)\s*:\s*(.*)$/);
-    if (kvMatch) {
-      const key = kvMatch[1].trim();
-      const val = kvMatch[2].trim();
-      if (val === "" || val === "[]") {
-        // Start of an array or empty value
-        currentKey = key;
-        currentArray = val === "[]" ? [] : null;
-      } else {
-        // Scalar value
-        const cleaned = val.replace(/^["']|["']$/g, "");
-        if (cleaned === "true") result[key] = true;
-        else if (cleaned === "false") result[key] = false;
-        else if (/^\d+$/.test(cleaned)) result[key] = parseInt(cleaned, 10);
-        else result[key] = cleaned;
-        currentKey = "";
-      }
-    }
-  }
-
-  // Flush trailing array
-  if (currentArray && currentKey) {
-    result[currentKey] = currentArray;
-  }
-
-  return result as KabboYaml;
-}
-
-// Hash function for API key validation (same as ingest-publication)
-async function hashKey(key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(key);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

@@ -50,6 +50,7 @@ export function dbToLocal(dbPub: any): Publication {
     collaborationLinks,
     githubRepo: dbPub.github_repo || '',
     overleafLink: dbPub.overleaf_link || '',
+    wordCountHistory: Array.isArray(dbPub.word_count_history) ? dbPub.word_count_history : [],
     reminders: [],
     collaborators: [],
     // Invariant: a row in the "published" stage MUST return a bucketable

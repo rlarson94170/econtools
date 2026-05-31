@@ -1,0 +1,17 @@
+{
+  "name": "econtools",
+  "owner": {
+    "name": "Johan Fourie",
+    "email": "johanf@sun.ac.za"
+  },
+  "description": "Research tools by Johan Fourie. Includes Kabbo, the academic publication pipeline assistant.",
+  "plugins": [
+    {
+      "name": "kabbo",
+      "source": "./kabbo/plugin",
+      "description": "Manage your academic publication pipeline from Claude Code — list, search, create, move, analyse, export, and sync papers (GitHub + Overleaf) via the Kabbo MCP server.",
+      "homepage": "https://kabbo.app",
+      "license": "MIT"
+    }
+  ]
+}

@@ -24,11 +24,14 @@ ochre, the pigment used in San rock art.
 - **Drag-and-drop pipeline** across seven stages
 - **Team collaboration** — invite members, per-role visibility, team analytics
 - **Publication sharing** — invite collaborators as viewer or editor
-- **Claude Code / Codex integration** — MCP server with 16 tools for
-  AI-assisted pipeline management (create and move papers, run analytics,
-  export BibTeX, search, batch-update, manage reminders, and more)
-- **Import / export** — BibTeX, PDF, Excel
-- **REST API and GitHub webhook** — automate the pipeline from external tools
+- **Claude Code / Codex integration** — MCP server with 23 tools plus resources
+  and prompts; install the Kabbo Claude Code plugin in one command
+- **GitHub App** — install once, pick repos, and pushes / releases / merged PRs
+  keep your pipeline current; `.kabbo.yaml` and `[stage:xxx]` commit tags drive
+  it, and LaTeX word counts track writing momentum
+- **Overleaf** — tracked through Overleaf's GitHub sync (no Overleaf API needed)
+- **Import / export** — BibTeX (in and out), PDF, Excel
+- **REST API and webhooks** — automate the pipeline from external tools
 - **Offline support** with a sync queue
 - **Light / dark mode** and swappable palettes
 
@@ -60,15 +63,26 @@ Dev server runs at `http://localhost:8080`.
 
 ## AI integration (MCP)
 
-The Supabase edge function at `supabase/functions/mcp-server/` exposes
-sixteen MCP tools — CRUD + analytics + search + bulk updates + reminders
-+ BibTeX export. Agents authenticate with a personal API key (generate
-one under *Settings → Developer*).
+The Supabase edge function at `supabase/functions/mcp-server/` exposes the MCP
+tools (CRUD + analytics + search + bulk updates + reminders + BibTeX in/out +
+repo linking + writing progress), plus MCP **resources** (`kabbo://...`) and
+**prompts** (`weekly_review`, `annual_report`, …). Agents authenticate with a
+personal API key (generate one under *Settings → Developer*).
 
-- **Claude Code users** install the `kabbo.skill` file from *Settings →
-  AI Integration*.
-- **Codex users** point Codex at the repo-root `AGENTS.md`, which
-  documents the tools and common prompts.
+- **Claude Code users** install the one-command plugin:
+  `/plugin marketplace add johanfourieza/econtools` then `/plugin install kabbo`.
+  It bundles the MCP config, the skill, and slash commands (`/kabbo:status`,
+  `/kabbo:sync`, `/kabbo:init`, `/kabbo:install-hooks`). The standalone
+  `skill.md` download from *Settings → AI Integration* still works too.
+- **Codex users** point Codex at the repo-root `AGENTS.md`.
+
+### GitHub App
+
+Install the Kabbo GitHub App from *Settings → Developer → Connect GitHub*, pick
+your repos, and the pipeline updates itself: pushes match cards and record LaTeX
+word counts, `[stage:xxx]` commit tags and stage-named releases move cards, and a
+repo with a `.kabbo.yaml` is auto-imported on install. The App webhook is signed
+(no API key in URLs); the per-repo `github-webhook` remains for manual setups.
 
 See `AGENTS.md` for the full tool reference and example prompts.
 
@@ -95,11 +109,15 @@ Regenerate it from source with `node brand/generate.mjs` and open
 - `src/hooks/useSupabasePublications.ts` — core data layer
 - `src/hooks/useTeams.ts` — teams hook
 - `src/data/kabboQuotes.ts` — ǀKabbo wisdom quotes shown on stage transitions
-- `supabase/functions/` — Deno edge functions (`mcp-server`,
-  `api-publications`, `github-webhook`, `ingest-publication`)
+- `src/hooks/useGithubInstallations.ts` — GitHub App install state + connect flow
+- `plugin/` — the Kabbo Claude Code plugin (manifest, skill, commands, hooks);
+  surfaced to users via `.claude-plugin/marketplace.json` at the repo root
+- `supabase/functions/` — Deno edge functions (`mcp-server`, `api-publications`,
+  `github-app`, `github-webhook`, `ingest-publication`); shared GitHub helpers
+  in `supabase/functions/_shared/github.ts`
 - `supabase/migrations/` — PostgreSQL migrations
 - `AGENTS.md` — contract for agents (Claude Code, Codex)
-- `theplan.md` — long-running roadmap / strategy notes
+- `theplan.txt` — long-running roadmap / strategy notes
 
 ## License
 

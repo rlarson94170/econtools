@@ -7,6 +7,41 @@
 
 ## Progress log
 
+### Wave 1 (Deep): Frictionless integration — IN PROGRESS (2026-05-31)
+Rebuilt the integration around "install once, then it just happens as you work."
+- [x] Kabbo GitHub App: new `github-app` edge function (signed webhook +
+      install/callback), `github_installations` table, install→user binding via
+      signed state. Push/release/merged-PR handling; auto-imports any repo with
+      a `.kabbo.yaml` on install. No API key in URLs.
+- [x] Writing momentum: LaTeX word count captured per push into
+      `publications.word_count_history`; shown in the drawer; exposed via the
+      `get_writing_progress` MCP tool.
+- [x] Shared GitHub helpers extracted to `supabase/functions/_shared/github.ts`
+      (YAML/stage/signature + App JWT, installation tokens, contents, texcount).
+      `github-webhook` refactored to import them (legacy path kept working).
+- [x] MCP server: corrected to mcp-lite 0.10.0's `tool(name, def)` signature
+      (the repo source used the old object-form and would have broken on the
+      next redeploy), pinned mcp-lite to 0.10.0. Added resources
+      (`kabbo://...`), prompts (morning_checkin, weekly_review, annual_report,
+      submission_prep, stalled_triage), and 7 new tools (list_connected_repos,
+      link_repo, get_writing_progress, set_target_journal, import_bibtex,
+      manage_related_papers, manage_data_sources) → 23 tools.
+- [x] One-command Claude Code plugin at `kabbo/plugin/` + repo-root
+      `.claude-plugin/marketplace.json`: MCP config (userConfig api_key), skill,
+      slash commands (/kabbo:status, :sync, :init, :install-hooks), git-hook
+      template. Install via `/plugin marketplace add johanfourieza/econtools`.
+- [x] Overleaf via Overleaf↔GitHub sync (docs in UI + skill + AGENTS;
+      overleaf_url in .kabbo.yaml; deep-link on card).
+- [x] "Connect GitHub" UX in ProfileSettingsModal (session-token auth, no API
+      key needed), useGithubInstallations hook, connect-redirect toast.
+- [x] Docs refreshed: public/skill.md, AGENTS.md, README.
+- [ ] A0 — register the GitHub App on github.com + set Supabase secrets
+      (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY [PKCS8], GITHUB_APP_WEBHOOK_SECRET,
+      GITHUB_APP_SLUG, optional SITE_URL). Manual; checklist to follow.
+- [ ] Deploy: run the github_app migration; deploy mcp-server + github-app.
+- [ ] C3 — optional MCP OAuth (browser auth instead of pasted key). Deferred;
+      go/no-go after this ships.
+
 ### Wave 1: Claude Code — killer feature — COMPLETE
 - [x] 1A · MCP server expanded from 6 to 16 tools (commit 6dcaa9b)
 - [x] 1B · One-click MCP setup UX in ProfileSettingsModal (commit 5c95d1c)

@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Camera, Loader2, ExternalLink, Key, Copy, Trash2, Plus, Code, Terminal, BookOpen, FolderSync, Github, Server, Database, FileCode, Download, Bot, Sparkles } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ActivityLog } from './ActivityLog';
+import { useGithubInstallations } from '@/hooks/useGithubInstallations';
 
 interface ApiKeyRow {
   id: string;
@@ -192,7 +193,56 @@ function ApiKeysSection({ userId }: { userId: string }) {
   );
 }
 
-function IntegrationGuide() {
+function GithubAppCard({ userId }: { userId: string }) {
+  const { installations, loading, connect, repoCount } = useGithubInstallations(userId);
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-md bg-foreground/5 flex items-center justify-center">
+          <Github className="w-4 h-4" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-medium">Kabbo for GitHub</p>
+          <p className="text-[10px] text-muted-foreground">Install once · tracks every repo you pick</p>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
+        Connect the Kabbo GitHub App and your pipeline updates itself as you work:
+        pushes, releases and merged PRs move cards, a repo's <code className="bg-muted px-1 rounded text-[10px]">.kabbo.yaml</code>{' '}
+        fills in metadata, and your LaTeX word count is tracked so drafts show real momentum.
+        No webhook setup, no API key in a URL.
+      </p>
+
+      {loading ? (
+        <div className="flex justify-center py-2"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+      ) : installations.length > 0 ? (
+        <div className="space-y-1.5">
+          {installations.map((inst) => (
+            <div key={inst.installation_id} className="flex items-center justify-between rounded border border-border px-3 py-1.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium truncate">{inst.account_login || 'GitHub account'}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {inst.suspended_at ? 'Suspended' : `${repoCount(inst)} ${repoCount(inst) === 'all' ? 'repositories' : 'repo(s)'} connected`}
+                </p>
+              </div>
+              {inst.suspended_at && <span className="text-[10px] text-destructive">suspended</span>}
+            </div>
+          ))}
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 mt-1" onClick={connect}>
+            <Plus className="w-3 h-3" /> Add or manage repos
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" className="h-8 text-xs gap-1.5" onClick={connect}>
+          <Github className="w-3.5 h-3.5" /> Connect GitHub
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function IntegrationGuide({ userId }: { userId: string }) {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const ingestUrl = `https://${projectId}.supabase.co/functions/v1/ingest-publications`;
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/api-publications`;
@@ -319,6 +369,9 @@ The script should:
         </p>
       </div>
 
+      {/* GitHub App — the frictionless "install once" path */}
+      <GithubAppCard userId={userId} />
+
       {/* Platform cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Claude Code card */}
@@ -334,7 +387,8 @@ The script should:
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             A CLI assistant that runs in your terminal. Install the Kabbo skill
-            file to give it access to all 16 pipeline tools via the{' '}
+            file (or the one-command plugin) to give it access to every pipeline
+            tool via the{' '}
             <code className="bg-muted px-1 rounded text-[10px]">/kabbo</code> command.
           </p>
           <div className="flex gap-2 pt-1">
@@ -419,12 +473,12 @@ The script should:
           <AccordionTrigger className="text-sm py-2">
             <span className="flex items-center gap-1.5">
               <Github className="w-3.5 h-3.5" />
-              GitHub Webhook (Auto-Sync)
+              GitHub Webhook (manual, per-repo)
             </span>
           </AccordionTrigger>
           <AccordionContent>
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Automatically update your pipeline when you push to a paper's GitHub repo.</p>
+              <p className="text-xs text-muted-foreground">Most people should use <strong>Connect GitHub</strong> above (install once, all repos). This manual per-repo webhook stays supported for private setups or fine-grained control.</p>
               
               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
                 <p className="text-xs font-medium text-muted-foreground">Webhook URL</p>
@@ -493,14 +547,29 @@ The script should:
             </span>
           </AccordionTrigger>
           <AccordionContent>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Give this prompt to Claude Code to auto-sync your Overleaf projects. Requires Overleaf premium (git access).</p>
-              <div className="relative">
-                <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{overleafPrompt}</pre>
-                <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(overleafPrompt)}>
-                  <Copy className="w-3 h-3" />
-                </Button>
+            <div className="space-y-3">
+              <div className="text-[11px] text-muted-foreground space-y-2">
+                <p className="font-medium text-foreground">Recommended: track Overleaf through GitHub</p>
+                <p>Overleaf is your editor; GitHub is the sync target; the Kabbo
+                  GitHub App watches GitHub. No Overleaf API or premium scripting needed —
+                  and you get LaTeX word-count momentum for free.</p>
+                <ol className="list-decimal ml-4 space-y-1">
+                  <li>In Overleaf: <strong>Menu → Sync → GitHub</strong>, link your project to a repo.</li>
+                  <li>Install the <strong>Kabbo GitHub App</strong> on that repo (the card at the top of this section).</li>
+                  <li>Add <code className="bg-muted px-1 rounded">overleaf_url:</code> to the repo's <code className="bg-muted px-1 rounded">.kabbo.yaml</code> so the card deep-links back to Overleaf.</li>
+                </ol>
+                <p>Now every edit you push from Overleaf updates the card, and the
+                  Draft stage shows how many words you've written this week.</p>
               </div>
+              <details>
+                <summary className="text-[11px] text-muted-foreground cursor-pointer">Alternative: Overleaf premium git access (script via Claude Code)</summary>
+                <div className="relative mt-2">
+                  <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{overleafPrompt}</pre>
+                  <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(overleafPrompt)}>
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              </details>
             </div>
           </AccordionContent>
         </AccordionItem>
@@ -1076,7 +1145,7 @@ export function ProfileSettingsModal({
                 </p>
               </div>
               <ApiKeysSection userId={profile.id} />
-              <IntegrationGuide />
+              <IntegrationGuide userId={profile.id} />
             </div>
           </TabsContent>
         </Tabs>

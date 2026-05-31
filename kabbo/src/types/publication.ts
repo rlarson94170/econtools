@@ -80,6 +80,8 @@ export interface Publication {
   // Legacy fields for backwards compatibility
   githubRepo?: string;
   overleafLink?: string;
+  // LaTeX word-count series captured by the GitHub App on each push.
+  wordCountHistory?: { at: string; words: number }[];
   // Reminders attached to this publication
   reminders: Reminder[];
   // Collaborators on this publication

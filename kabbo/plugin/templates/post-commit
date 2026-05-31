@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Kabbo post-commit hook — syncs this repo's paper to your pipeline on each commit.
+# Installed by `/kabbo:install-hooks`. Use only for repos NOT covered by the
+# Kabbo GitHub App. Reads the API key from .git/kabbo-key or $KABBO_API_KEY.
+set -euo pipefail
+
+INGEST_URL="https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/ingest-publications"
+GITDIR="$(git rev-parse --git-dir)"
+KEY="${KABBO_API_KEY:-}"
+[ -z "$KEY" ] && [ -f "$GITDIR/kabbo-key" ] && KEY="$(cat "$GITDIR/kabbo-key")"
+if [ -z "$KEY" ]; then
+  echo "kabbo: no API key (set KABBO_API_KEY or .git/kabbo-key); skipping sync." >&2
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+MSG="$(git log -1 --pretty=%s)"
+
+# Title: .kabbo.yaml > repo folder name in Title Case.
+TITLE=""
+if [ -f "$ROOT/.kabbo.yaml" ]; then
+  TITLE="$(grep -E '^title:' "$ROOT/.kabbo.yaml" | head -1 | sed -E 's/^title:[[:space:]]*//; s/^"//; s/"$//')"
+fi
+[ -z "$TITLE" ] && TITLE="$(basename "$ROOT" | tr '-_' '  ' | awk '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) substr($i,2)}}1')"
+
+# Stage: [stage:xxx] tag in the commit message, if present.
+STAGE="$(printf '%s' "$MSG" | sed -nE 's/.*\[stage:([^]]+)\].*/\1/ip' | head -1)"
+
+REMOTE="$(git remote get-url origin 2>/dev/null || true)"
+
+# Build JSON (stage and github_repo are optional).
+BODY="{\"title\":$(printf '%s' "$TITLE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+[ -n "$STAGE" ] && BODY="$BODY,\"stage\":\"$STAGE\""
+[ -n "$REMOTE" ] && BODY="$BODY,\"github_repo\":\"$REMOTE\""
+BODY="$BODY,\"notes\":\"[git] $MSG\"}"
+
+curl -s -X POST "$INGEST_URL" -H "x-api-key: $KEY" -H "Content-Type: application/json" \
+  -d "$BODY" >/dev/null && echo "kabbo: synced \"$TITLE\"${STAGE:+ → $STAGE}" || \
+  echo "kabbo: sync failed (non-fatal)" >&2
+exit 0

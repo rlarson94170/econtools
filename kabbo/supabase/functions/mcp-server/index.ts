@@ -50,15 +50,35 @@ async function callApi(
 }
 
 const VALID_STAGES = ["idea", "draft", "submitted", "revise_resubmit", "resubmitted", "accepted", "published"];
-const STAGE_ORDER: Record<string, number> = Object.fromEntries(VALID_STAGES.map((s, i) => [s, i]));
+
+// Minimal BibTeX parser: enough to import title / author / year / journal.
+function parseBibtex(bibtex: string): Array<Record<string, string>> {
+  const entries: Array<Record<string, string>> = [];
+  const blocks = bibtex.split(/@/).slice(1);
+  for (const block of blocks) {
+    const typeMatch = block.match(/^(\w+)\s*\{/);
+    if (!typeMatch) continue;
+    const entry: Record<string, string> = { _type: typeMatch[1].toLowerCase() };
+    const fieldRe = /(\w+)\s*=\s*(\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}|"([^"]*)"|([^,\n]+))/g;
+    let m: RegExpExecArray | null;
+    while ((m = fieldRe.exec(block)) !== null) {
+      const key = m[1].toLowerCase();
+      const val = (m[3] ?? m[4] ?? m[5] ?? "").trim().replace(/\s+/g, " ");
+      entry[key] = val;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
 
 function createMcpServer(apiKey: string) {
-  const server = new McpServer({ name: "kabbo", version: "2.0.0" });
+  const server = new McpServer({ name: "kabbo", version: "2.1.0" });
 
-  // --- Existing tools (1-6) ---
+  // ===========================================================================
+  // Tools 1-6 — Core CRUD
+  // ===========================================================================
 
-  server.tool({
-    name: "list_publications",
+  server.tool("list_publications", {
     description: "List all publications in the pipeline. Optionally filter by search query or stage.",
     inputSchema: {
       type: "object" as const,
@@ -79,8 +99,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "get_publication",
+  server.tool("get_publication", {
     description: "Get a single publication by its ID.",
     inputSchema: {
       type: "object" as const,
@@ -92,8 +111,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "create_publication",
+  server.tool("create_publication", {
     description: "Create a new publication in the pipeline. Title is required. Stage defaults to 'idea'.",
     inputSchema: {
       type: "object" as const,
@@ -104,6 +122,7 @@ function createMcpServer(apiKey: string) {
         notes: { type: "string", description: "Notes about the publication" },
         output_type: { type: "string", description: "Output type: journal, book, chapter" },
         target_year: { type: "number", description: "Target completion year" },
+        target_journal: { type: "string", description: "Intended journal" },
         themes: { type: "array", items: { type: "string" }, description: "Research themes/topics" },
         grants: { type: "array", items: { type: "string" }, description: "Associated grants" },
         github_repo: { type: "string", description: "GitHub repository URL" },
@@ -122,8 +141,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "update_publication",
+  server.tool("update_publication", {
     description: "Update an existing publication. Provide the ID and any fields to change.",
     inputSchema: {
       type: "object" as const,
@@ -135,6 +153,7 @@ function createMcpServer(apiKey: string) {
         notes: { type: "string", description: "Updated notes" },
         output_type: { type: "string", description: "Output type" },
         target_year: { type: "number", description: "Target year" },
+        target_journal: { type: "string", description: "Intended journal" },
         themes: { type: "array", items: { type: "string" }, description: "Updated themes" },
         grants: { type: "array", items: { type: "string" }, description: "Updated grants" },
         github_repo: { type: "string", description: "GitHub repo URL" },
@@ -147,8 +166,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "move_stage",
+  server.tool("move_stage", {
     description: "Move a publication to a different pipeline stage.",
     inputSchema: {
       type: "object" as const,
@@ -163,8 +181,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "delete_publication",
+  server.tool("delete_publication", {
     description: "Move a publication to the bin (soft delete). Can be restored from the Kabbo UI.",
     inputSchema: {
       type: "object" as const,
@@ -176,10 +193,11 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  // --- New tools (7-16) ---
+  // ===========================================================================
+  // Tools 7-16 — Analytics, search, reminders, team, export, notes
+  // ===========================================================================
 
-  server.tool({
-    name: "get_pipeline_summary",
+  server.tool("get_pipeline_summary", {
     description: "Get an overview of your publication pipeline: counts by stage, recently updated papers, stalled papers (30+ days without movement), and total counts.",
     inputSchema: { type: "object" as const, properties: {} },
     handler: async () => {
@@ -191,8 +209,6 @@ function createMcpServer(apiKey: string) {
         .is("deleted_at", null);
 
       const now = Date.now();
-      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-
       const stageCounts: Record<string, number> = {};
       VALID_STAGES.forEach(s => stageCounts[s] = 0);
       const stalled: { id: string; title: string; stage: string; days_stalled: number }[] = [];
@@ -200,8 +216,7 @@ function createMcpServer(apiKey: string) {
 
       for (const p of pubs || []) {
         stageCounts[p.stage] = (stageCounts[p.stage] || 0) + 1;
-        const updatedMs = new Date(p.updated_at).getTime();
-        const daysSince = Math.floor((now - updatedMs) / (24 * 60 * 60 * 1000));
+        const daysSince = Math.floor((now - new Date(p.updated_at).getTime()) / (24 * 60 * 60 * 1000));
         if (daysSince >= 30 && p.stage !== "published") {
           stalled.push({ id: p.id, title: p.title, stage: p.stage, days_stalled: daysSince });
         }
@@ -222,8 +237,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "search_publications",
+  server.tool("search_publications", {
     description: "Search publications across title, authors, notes, and themes. More powerful than list_publications – supports multi-field filtering.",
     inputSchema: {
       type: "object" as const,
@@ -261,8 +275,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "bulk_update",
+  server.tool("bulk_update", {
     description: "Update multiple publications at once. Provide an array of {id, ...updates} objects.",
     inputSchema: {
       type: "object" as const,
@@ -297,14 +310,13 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "get_activity_log",
-    description: "Get recent activity across all sources (web, API, MCP, webhook). Filter by date range.",
+  server.tool("get_activity_log", {
+    description: "Get recent activity across all sources (web, API, MCP, webhook, github_app). Filter by date range.",
     inputSchema: {
       type: "object" as const,
       properties: {
         days: { type: "number", description: "Number of days to look back (default 7)" },
-        source: { type: "string", description: "Filter by source: web, api, mcp, webhook" },
+        source: { type: "string", description: "Filter by source: web, api, mcp, webhook, github_app" },
         limit: { type: "number", description: "Max entries (default 50)" },
       },
     },
@@ -330,8 +342,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "manage_reminders",
+  server.tool("manage_reminders", {
     description: "Create, list, update, or delete reminders for publications. Use action: 'list', 'create', 'complete', or 'delete'.",
     inputSchema: {
       type: "object" as const,
@@ -351,9 +362,7 @@ function createMcpServer(apiKey: string) {
 
       if (action === "list") {
         const { data, error } = await supabase
-          .from("reminders")
-          .select("*")
-          .eq("user_id", userId)
+          .from("reminders").select("*").eq("user_id", userId)
           .order("due_date", { ascending: true });
         if (error) throw error;
         return textResult({ count: (data || []).length, reminders: data });
@@ -369,8 +378,7 @@ function createMcpServer(apiKey: string) {
             due_date: params.due_date ? String(params.due_date) : null,
             reminder_type: String(params.reminder_type || "custom"),
           })
-          .select()
-          .single();
+          .select().single();
         if (error) throw error;
         return textResult({ action: "created", reminder: data });
       }
@@ -379,18 +387,15 @@ function createMcpServer(apiKey: string) {
         const { error } = await supabase
           .from("reminders")
           .update({ completed: true, completed_at: new Date().toISOString() })
-          .eq("id", String(params.reminder_id))
-          .eq("user_id", userId);
+          .eq("id", String(params.reminder_id)).eq("user_id", userId);
         if (error) throw error;
         return textResult({ action: "completed", reminder_id: params.reminder_id });
       }
 
       if (action === "delete") {
         const { error } = await supabase
-          .from("reminders")
-          .delete()
-          .eq("id", String(params.reminder_id))
-          .eq("user_id", userId);
+          .from("reminders").delete()
+          .eq("id", String(params.reminder_id)).eq("user_id", userId);
         if (error) throw error;
         return textResult({ action: "deleted", reminder_id: params.reminder_id });
       }
@@ -399,8 +404,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "get_analytics",
+  server.tool("get_analytics", {
     description: "Get analytics about your publication pipeline: conversion rates between stages, average time per stage, publication velocity by year, and breakdowns by author/theme/grant.",
     inputSchema: {
       type: "object" as const,
@@ -418,7 +422,6 @@ function createMcpServer(apiKey: string) {
 
       const all = pubs || [];
       const currentYear = new Date().getFullYear();
-
       const publishedByYear: Record<number, number> = {};
       const stageTimesMs: Record<string, number[]> = {};
 
@@ -452,28 +455,19 @@ function createMcpServer(apiKey: string) {
 
       if (params.breakdown_by === "author") {
         const byAuthor: Record<string, number> = {};
-        for (const p of all) {
-          for (const a of (p.authors || [])) { byAuthor[a] = (byAuthor[a] || 0) + 1; }
-        }
+        for (const p of all) for (const a of (p.authors || [])) byAuthor[a] = (byAuthor[a] || 0) + 1;
         result.by_author = byAuthor;
       } else if (params.breakdown_by === "theme") {
         const byTheme: Record<string, number> = {};
-        for (const p of all) {
-          for (const t of (p.themes || [])) { byTheme[t] = (byTheme[t] || 0) + 1; }
-        }
+        for (const p of all) for (const t of (p.themes || [])) byTheme[t] = (byTheme[t] || 0) + 1;
         result.by_theme = byTheme;
       } else if (params.breakdown_by === "grant") {
         const byGrant: Record<string, number> = {};
-        for (const p of all) {
-          for (const g of (p.grants || [])) { byGrant[g] = (byGrant[g] || 0) + 1; }
-        }
+        for (const p of all) for (const g of (p.grants || [])) byGrant[g] = (byGrant[g] || 0) + 1;
         result.by_grant = byGrant;
       } else if (params.breakdown_by === "output_type") {
         const byType: Record<string, number> = {};
-        for (const p of all) {
-          const t = p.output_type || "unspecified";
-          byType[t] = (byType[t] || 0) + 1;
-        }
+        for (const p of all) { const t = p.output_type || "unspecified"; byType[t] = (byType[t] || 0) + 1; }
         result.by_output_type = byType;
       }
 
@@ -481,14 +475,11 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "get_team_summary",
-    description: "Get a summary of a team's publication pipeline: member count, total papers, papers by stage per member, and stalled papers. Requires team admin access.",
+  server.tool("get_team_summary", {
+    description: "Get a summary of a team's publication pipeline: member count, total papers, papers by stage per member, and stalled papers. Requires team membership.",
     inputSchema: {
       type: "object" as const,
-      properties: {
-        team_id: { type: "string", description: "Team UUID" },
-      },
+      properties: { team_id: { type: "string", description: "Team UUID" } },
       required: ["team_id"],
     },
     handler: async (params: Record<string, unknown>) => {
@@ -496,32 +487,21 @@ function createMcpServer(apiKey: string) {
       const teamId = String(params.team_id);
 
       const { data: membership } = await supabase
-        .from("team_members")
-        .select("role")
-        .eq("team_id", teamId)
-        .eq("user_id", userId)
-        .eq("status", "accepted")
-        .single();
-
+        .from("team_members").select("role")
+        .eq("team_id", teamId).eq("user_id", userId).eq("status", "accepted").single();
       if (!membership) return textResult({ error: "You are not a member of this team" });
 
       const { data: members } = await supabase
-        .from("team_members")
-        .select("user_id, role, profiles(display_name)")
-        .eq("team_id", teamId)
-        .eq("status", "accepted");
+        .from("team_members").select("user_id, role, profiles(display_name)")
+        .eq("team_id", teamId).eq("status", "accepted");
 
       const now = Date.now();
-      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
       const memberSummaries = [];
-
       for (const m of members || []) {
         if (!m.user_id) continue;
         const { data: pubs } = await supabase
-          .from("publications")
-          .select("id, title, stage, updated_at")
-          .eq("owner_id", m.user_id)
-          .is("deleted_at", null);
+          .from("publications").select("id, title, stage, updated_at")
+          .eq("owner_id", m.user_id).is("deleted_at", null);
 
         const stageCounts: Record<string, number> = {};
         const stalledPapers: string[] = [];
@@ -530,10 +510,9 @@ function createMcpServer(apiKey: string) {
           const daysSince = Math.floor((now - new Date(p.updated_at).getTime()) / (24 * 60 * 60 * 1000));
           if (daysSince >= 30 && p.stage !== "published") stalledPapers.push(p.title);
         }
-
         memberSummaries.push({
           user_id: m.user_id,
-          name: (m.profiles as any)?.display_name || "Unknown",
+          name: (m.profiles as { display_name?: string } | null)?.display_name || "Unknown",
           role: m.role,
           total_papers: (pubs || []).length,
           by_stage: stageCounts,
@@ -551,8 +530,7 @@ function createMcpServer(apiKey: string) {
     },
   });
 
-  server.tool({
-    name: "export_bibtex",
+  server.tool("export_bibtex", {
     description: "Generate BibTeX entries for your publications. Filter by stage, year, or specific IDs.",
     inputSchema: {
       type: "object" as const,
@@ -566,9 +544,8 @@ function createMcpServer(apiKey: string) {
       const { userId, supabase } = await getAuthenticatedUser(apiKey);
       let q = supabase
         .from("publications")
-        .select("id, title, authors, stage, target_year, output_type, notes")
-        .eq("owner_id", userId)
-        .is("deleted_at", null);
+        .select("id, title, authors, stage, target_year, target_journal, output_type, notes")
+        .eq("owner_id", userId).is("deleted_at", null);
 
       if (params.stage) q = q.eq("stage", String(params.stage));
       if (params.year) q = q.eq("target_year", Number(params.year));
@@ -581,15 +558,15 @@ function createMcpServer(apiKey: string) {
         const key = p.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40);
         const authorStr = (p.authors || []).join(" and ");
         const type = p.output_type === "book" ? "book" : p.output_type === "chapter" ? "incollection" : "article";
-        return `@${type}{${key},\n  title = {${p.title}},\n  author = {${authorStr}},\n  year = {${p.target_year || ""}},\n}`;
+        const journalLine = p.target_journal ? `\n  journal = {${p.target_journal}},` : "";
+        return `@${type}{${key},\n  title = {${p.title}},\n  author = {${authorStr}},\n  year = {${p.target_year || ""}},${journalLine}\n}`;
       });
 
       return textResult({ count: entries.length, bibtex: entries.join("\n\n") });
     },
   });
 
-  server.tool({
-    name: "add_note",
+  server.tool("add_note", {
     description: "Append a note to a publication's existing notes without overwriting them.",
     inputSchema: {
       type: "object" as const,
@@ -602,12 +579,7 @@ function createMcpServer(apiKey: string) {
     handler: async (params: Record<string, unknown>) => {
       const { userId, supabase } = await getAuthenticatedUser(apiKey);
       const { data: pub } = await supabase
-        .from("publications")
-        .select("notes")
-        .eq("id", String(params.id))
-        .eq("owner_id", userId)
-        .single();
-
+        .from("publications").select("notes").eq("id", String(params.id)).eq("owner_id", userId).single();
       if (!pub) return textResult({ error: "Publication not found" });
 
       const timestamp = new Date().toISOString().slice(0, 10);
@@ -616,17 +588,14 @@ function createMcpServer(apiKey: string) {
       const updated = `${existing}${separator}[${timestamp}] ${params.note}`;
 
       const { error } = await supabase
-        .from("publications")
-        .update({ notes: updated, updated_at: new Date().toISOString() })
+        .from("publications").update({ notes: updated, updated_at: new Date().toISOString() })
         .eq("id", String(params.id));
-
       if (error) throw error;
       return textResult({ success: true, publication_id: params.id, notes: updated });
     },
   });
 
-  server.tool({
-    name: "get_stalled_papers",
+  server.tool("get_stalled_papers", {
     description: "Get publications that haven't been updated in a while. Useful for identifying papers that need attention.",
     inputSchema: {
       type: "object" as const,
@@ -641,30 +610,321 @@ function createMcpServer(apiKey: string) {
       const cutoff = new Date(Date.now() - minDays * 24 * 60 * 60 * 1000).toISOString();
 
       let q = supabase
-        .from("publications")
-        .select("id, title, stage, authors, updated_at, target_year")
-        .eq("owner_id", userId)
-        .is("deleted_at", null)
-        .neq("stage", "published")
-        .lt("updated_at", cutoff)
+        .from("publications").select("id, title, stage, authors, updated_at, target_year")
+        .eq("owner_id", userId).is("deleted_at", null)
+        .neq("stage", "published").lt("updated_at", cutoff)
         .order("updated_at", { ascending: true });
-
       if (params.stage) q = q.eq("stage", String(params.stage));
 
       const { data, error } = await q;
       if (error) throw error;
-
       const now = Date.now();
       const results = (data || []).map(p => ({
         ...p,
         days_stalled: Math.floor((now - new Date(p.updated_at).getTime()) / (24 * 60 * 60 * 1000)),
       }));
-
       return textResult({ count: results.length, threshold_days: minDays, stalled: results });
     },
   });
 
+  // ===========================================================================
+  // Tools 17-23 — Integration & workflow (new in 2.1)
+  // ===========================================================================
+
+  server.tool("list_connected_repos", {
+    description: "List GitHub installations and repositories connected to your Kabbo account via the Kabbo GitHub App.",
+    inputSchema: { type: "object" as const, properties: {} },
+    handler: async () => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const { data, error } = await supabase
+        .from("github_installations")
+        .select("installation_id, account_login, account_type, repositories, suspended_at, created_at")
+        .eq("user_id", userId);
+      if (error) throw error;
+      return textResult({ count: (data || []).length, installations: data });
+    },
+  });
+
+  server.tool("link_repo", {
+    description: "Link a GitHub repository and/or Overleaf project to a publication so commits and writing show up against it.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Publication UUID" },
+        github_repo: { type: "string", description: "GitHub repository URL" },
+        overleaf_url: { type: "string", description: "Overleaf project URL" },
+      },
+      required: ["id"],
+    },
+    handler: async (params: Record<string, unknown>) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (params.github_repo) patch.github_repo = String(params.github_repo);
+      if (params.overleaf_url) patch.overleaf_link = String(params.overleaf_url);
+      const { error } = await supabase
+        .from("publications").update(patch)
+        .eq("id", String(params.id)).eq("owner_id", userId);
+      if (error) throw error;
+      return textResult({ success: true, publication_id: params.id, linked: patch });
+    },
+  });
+
+  server.tool("get_writing_progress", {
+    description: "Get the LaTeX word-count history for a publication (captured on each push to its connected GitHub repo). Use to report writing momentum.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { id: { type: "string", description: "Publication UUID" } },
+      required: ["id"],
+    },
+    handler: async (params: Record<string, unknown>) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const { data, error } = await supabase
+        .from("publications").select("id, title, word_count_history")
+        .eq("id", String(params.id)).eq("owner_id", userId).single();
+      if (error) throw error;
+      const hist = (data?.word_count_history || []) as Array<{ at: string; words: number }>;
+      const latest = hist[hist.length - 1]?.words ?? null;
+      const first = hist[0]?.words ?? null;
+      return textResult({
+        publication_id: data?.id,
+        title: data?.title,
+        points: hist.length,
+        latest_words: latest,
+        delta_since_first: latest !== null && first !== null ? latest - first : null,
+        history: hist,
+      });
+    },
+  });
+
+  server.tool("set_target_journal", {
+    description: "Set the intended journal for a publication.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Publication UUID" },
+        journal: { type: "string", description: "Target journal name" },
+      },
+      required: ["id", "journal"],
+    },
+    handler: async (params: Record<string, unknown>) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const { error } = await supabase
+        .from("publications")
+        .update({ target_journal: String(params.journal), updated_at: new Date().toISOString() })
+        .eq("id", String(params.id)).eq("owner_id", userId);
+      if (error) throw error;
+      return textResult({ success: true, publication_id: params.id, target_journal: params.journal });
+    },
+  });
+
+  server.tool("import_bibtex", {
+    description: "Import publications from a BibTeX string. Each entry becomes a publication (upserted by title). Maps title, author, year, and journal.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        bibtex: { type: "string", description: "Raw BibTeX text (one or more @entries)" },
+        stage: { type: "string", description: "Stage to assign imported papers (default 'published')" },
+      },
+      required: ["bibtex"],
+    },
+    handler: async (params: Record<string, unknown>) => {
+      const entries = parseBibtex(String(params.bibtex));
+      const stage = String(params.stage || "published");
+      const results = [];
+      for (const e of entries) {
+        if (!e.title) continue;
+        const authors = e.author ? e.author.split(/\s+and\s+/).map((a) => a.trim()).filter(Boolean) : undefined;
+        const body: Record<string, unknown> = { title: e.title, stage };
+        if (authors) body.authors = authors;
+        if (e.year && /^\d{4}$/.test(e.year)) body.target_year = Number(e.year);
+        if (e.journal || e.journaltitle) body.target_journal = e.journal || e.journaltitle;
+        if (e._type === "book") body.output_type = "book";
+        else if (e._type === "incollection" || e._type === "inbook") body.output_type = "chapter";
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ingest-publications`, {
+          method: "POST",
+          headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        results.push({ title: e.title, result: await res.json() });
+      }
+      return textResult({ parsed: entries.length, imported: results.length, results });
+    },
+  });
+
+  server.tool("manage_related_papers", {
+    description: "List, add, or remove entries in a publication's related-papers list. Use action: 'list', 'add', 'remove'.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Publication UUID" },
+        action: { type: "string", description: "list, add, or remove" },
+        value: { type: "string", description: "Related paper (title, DOI, or URL) for add/remove" },
+      },
+      required: ["id", "action"],
+    },
+    handler: async (params: Record<string, unknown>) => {
+      return await manageStringArray(apiKey, "related_papers", params);
+    },
+  });
+
+  server.tool("manage_data_sources", {
+    description: "List, add, or remove entries in a publication's data-sources list. Use action: 'list', 'add', 'remove'.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Publication UUID" },
+        action: { type: "string", description: "list, add, or remove" },
+        value: { type: "string", description: "Data source (name or URL) for add/remove" },
+      },
+      required: ["id", "action"],
+    },
+    handler: async (params: Record<string, unknown>) => {
+      return await manageStringArray(apiKey, "data_sources", params);
+    },
+  });
+
+  // ===========================================================================
+  // Resources — read pipeline state as context without a tool round-trip
+  // ===========================================================================
+
+  server.resource(
+    "kabbo://pipeline/summary",
+    { name: "Pipeline summary", description: "Counts by stage, stalled and recently-updated papers", mimeType: "application/json" },
+    async (uri: URL) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const { data: pubs } = await supabase
+        .from("publications").select("id, title, stage, updated_at")
+        .eq("owner_id", userId).is("deleted_at", null);
+      const now = Date.now();
+      const byStage: Record<string, number> = {};
+      VALID_STAGES.forEach(s => byStage[s] = 0);
+      const stalled = [];
+      for (const p of pubs || []) {
+        byStage[p.stage] = (byStage[p.stage] || 0) + 1;
+        const days = Math.floor((now - new Date(p.updated_at).getTime()) / (864e5));
+        if (days >= 30 && p.stage !== "published") stalled.push({ title: p.title, stage: p.stage, days });
+      }
+      return { contents: [{ uri: uri.href, mimeType: "application/json",
+        text: JSON.stringify({ total: (pubs || []).length, by_stage: byStage, stalled }, null, 2) }] };
+    },
+  );
+
+  server.resource(
+    "kabbo://publications",
+    { name: "All publications", description: "Every publication with stage and metadata", mimeType: "application/json" },
+    async (uri: URL) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const { data } = await supabase
+        .from("publications")
+        .select("id, title, stage, authors, themes, grants, target_year, target_journal, github_repo, overleaf_link, updated_at")
+        .eq("owner_id", userId).is("deleted_at", null).order("updated_at", { ascending: false });
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  server.resource(
+    "kabbo://publication/{id}",
+    { name: "Publication", description: "A single publication by id", mimeType: "application/json" },
+    async (uri: URL, params: { id: string }) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const { data } = await supabase
+        .from("publications").select("*")
+        .eq("id", params.id).eq("owner_id", userId).is("deleted_at", null).maybeSingle();
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  server.resource(
+    "kabbo://activity/recent",
+    { name: "Recent activity", description: "Activity log entries from the last 14 days", mimeType: "application/json" },
+    async (uri: URL) => {
+      const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const since = new Date(Date.now() - 14 * 864e5).toISOString();
+      const { data } = await supabase
+        .from("activity_log").select("action, source, publication_title, details, created_at")
+        .eq("user_id", userId).gte("created_at", since)
+        .order("created_at", { ascending: false }).limit(100);
+      return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  // ===========================================================================
+  // Prompts — appear as slash commands in Claude Code
+  // ===========================================================================
+
+  server.prompt("morning_checkin", {
+    description: "A quick start-of-day overview of your pipeline and what needs attention.",
+    handler: () => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text:
+        "Give me my Kabbo morning check-in. Read the kabbo://pipeline/summary resource (or call get_pipeline_summary), then in 3-4 sentences tell me: what moved recently, what's stalled and needs nudging, and the single most useful thing I could do today." } }],
+    }),
+  });
+
+  server.prompt("weekly_review", {
+    description: "Summarise the past week's pipeline activity and progress.",
+    handler: () => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text:
+        "Run my Kabbo weekly review. Call get_activity_log with days=7 and get_pipeline_summary. Summarise what changed, which papers advanced a stage, any new writing momentum (get_writing_progress for active drafts), and flag anything stuck. End with 2-3 concrete suggestions for next week." } }],
+    }),
+  });
+
+  server.prompt("annual_report", {
+    description: "Draft an annual research-output summary for a given year.",
+    arguments: [{ name: "year", description: "The year to report on (e.g. 2026)", required: false }],
+    handler: (args: { year?: string }) => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text:
+        `Draft my annual research-output summary${args?.year ? ` for ${args.year}` : ""}. Call get_analytics (and with breakdown_by='theme' and 'grant'), and export_bibtex for that year's published work. Produce a short narrative paragraph plus a bulleted list of outputs by stage, suitable for a faculty annual review.` } }],
+    }),
+  });
+
+  server.prompt("submission_prep", {
+    description: "Prepare a paper for submission: checklist and metadata review.",
+    arguments: [{ name: "title", description: "Title (or part) of the paper to prepare", required: true }],
+    handler: (args: { title?: string }) => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text:
+        `Help me prepare "${args?.title ?? "my current paper"}" for submission. Use search_publications to find it, check it has authors, a target_journal, and themes; if a journal isn't set, ask me and use set_target_journal. Then move it to 'submitted' with move_stage and set a resubmission reminder if relevant.` } }],
+    }),
+  });
+
+  server.prompt("stalled_triage", {
+    description: "Triage stalled papers and decide what to do with each.",
+    handler: () => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text:
+        "Call get_stalled_papers (days=30). For each stalled paper, suggest one concrete next action (nudge co-author, withdraw and resubmit, mark published, archive). Keep it to one line each, ordered by how long they've been stuck." } }],
+    }),
+  });
+
   return server;
+}
+
+// Shared helper for manage_related_papers / manage_data_sources.
+async function manageStringArray(
+  apiKey: string, column: "related_papers" | "data_sources", params: Record<string, unknown>,
+) {
+  const { userId, supabase } = await getAuthenticatedUser(apiKey);
+  const id = String(params.id);
+  const action = String(params.action);
+  const { data: pub } = await supabase
+    .from("publications").select(column).eq("id", id).eq("owner_id", userId).single();
+  if (!pub) return textResult({ error: "Publication not found" });
+
+  const current: string[] = Array.isArray((pub as Record<string, unknown>)[column])
+    ? ((pub as Record<string, unknown>)[column] as string[]) : [];
+
+  if (action === "list") return textResult({ [column]: current });
+
+  const value = String(params.value || "").trim();
+  if (!value) return textResult({ error: "value is required for add/remove" });
+
+  let next: string[];
+  if (action === "add") next = current.includes(value) ? current : [...current, value];
+  else if (action === "remove") next = current.filter((v) => v !== value);
+  else return textResult({ error: "Unknown action. Use: list, add, remove" });
+
+  const { error } = await supabase
+    .from("publications").update({ [column]: next, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw error;
+  return textResult({ success: true, [column]: next });
 }
 
 const app = new Hono();
