@@ -16,7 +16,8 @@ interface CardRow {
 }
 
 const NEW = '__new__';
-const SKIP = '';
+// Radix Select forbids empty-string item values, so "skip" needs a real token.
+const SKIP = '__skip__';
 
 /**
  * Maps the top-level folders of a connected repo to publication cards.
@@ -81,7 +82,7 @@ export function GithubFolderMap({
       let linked = 0;
       for (const f of info.folders) {
         const v = choice[f.path];
-        if (!v) continue; // skip
+        if (!v || v === SKIP) continue; // skip
         const patch = {
           github_repo: info.html_url,
           github_repo_id: info.repo_id,
