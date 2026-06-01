@@ -254,6 +254,46 @@ export interface RepoMeta {
   default_branch: string;
 }
 
+/** Fetch a repo's id, html_url, and default_branch. */
+export async function getRepo(
+  repoFullName: string, token: string,
+): Promise<{ id: number; html_url: string; default_branch: string } | null> {
+  const res = await fetch(`${GH_API}/repos/${repoFullName}`, {
+    headers: { ...GH_HEADERS, Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const d = await res.json();
+  return { id: d.id, html_url: d.html_url, default_branch: d.default_branch || "main" };
+}
+
+/**
+ * List a repo's top-level folders, flagging which contain any .tex file
+ * (so the mapping UI can show where writing-momentum will be tracked).
+ */
+export async function listRepoFolders(
+  repoFullName: string, token: string, branch: string,
+): Promise<Array<{ path: string; hasTex: boolean }>> {
+  const res = await fetch(
+    `${GH_API}/repos/${repoFullName}/git/trees/${branch}?recursive=1`,
+    { headers: { ...GH_HEADERS, Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) return [];
+  const tree = await res.json();
+  const folders = new Map<string, boolean>();
+  for (const n of (tree.tree || []) as Array<{ type: string; path: string }>) {
+    const top = n.path.split("/")[0];
+    if (n.type === "tree" && !n.path.includes("/")) {
+      if (!folders.has(n.path)) folders.set(n.path, false);
+    }
+    if (n.type === "blob" && /\.tex$/i.test(n.path) && n.path.includes("/")) {
+      folders.set(top, true);
+    }
+  }
+  return [...folders.entries()]
+    .map(([path, hasTex]) => ({ path, hasTex }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
 /** List the repositories an installation can access (full repo objects). */
 export async function listInstallationRepos(
   installationId: number, token: string,
@@ -320,6 +360,7 @@ export async function countTexWords(
   token: string,
   branch: string,
   maxFiles = 25,
+  subpath?: string,  // if set, only count .tex files under this top-level folder
 ): Promise<number> {
   try {
     const treeRes = await fetch(
@@ -328,8 +369,10 @@ export async function countTexWords(
     );
     if (!treeRes.ok) return 0;
     const tree = await treeRes.json();
+    const prefix = subpath ? `${subpath.replace(/\/+$/, "")}/` : "";
     const texBlobs = (tree.tree || [])
-      .filter((n: { type: string; path: string }) => n.type === "blob" && /\.tex$/i.test(n.path))
+      .filter((n: { type: string; path: string }) =>
+        n.type === "blob" && /\.tex$/i.test(n.path) && (!prefix || n.path.startsWith(prefix)))
       .slice(0, maxFiles) as Array<{ sha: string; path: string }>;
 
     let total = 0;

@@ -15,6 +15,15 @@ export interface GithubInstallation {
 // VITE_SUPABASE_PROJECT_ID (not configured in production → "undefined").
 const FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 const installUrl = `${FUNCTIONS_BASE}/github-app/install`;
+const foldersUrl = `${FUNCTIONS_BASE}/github-app/folders`;
+
+export interface RepoFolders {
+  repo: string;
+  repo_id: number;
+  html_url: string;
+  default_branch: string;
+  folders: { path: string; hasTex: boolean }[];
+}
 
 /**
  * Reads the user's connected GitHub App installations and starts the
@@ -51,5 +60,16 @@ export function useGithubInstallations(userId: string | undefined) {
     Array.isArray(inst.repositories) ? inst.repositories.length
       : inst.repositories?.all ? 'all' : 0;
 
-  return { installations, loading, refresh, connect, repoCount };
+  /** List a connected repo's top-level folders (for folder→card mapping). */
+  const listFolders = useCallback(async (repoFullName: string): Promise<RepoFolders> => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new Error('Please sign in again');
+    const res = await fetch(`${foldersUrl}?token=${encodeURIComponent(token)}&repo=${encodeURIComponent(repoFullName)}`);
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Could not read repo folders');
+    return body as RepoFolders;
+  }, []);
+
+  return { installations, loading, refresh, connect, repoCount, listFolders };
 }

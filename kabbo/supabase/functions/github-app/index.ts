@@ -24,10 +24,12 @@ import {
   countTexWords,
   extractStageTag,
   fetchKabboYaml,
+  getRepo,
   hashKey,
   installationToken,
   type KabboYaml,
   listInstallationRepos,
+  listRepoFolders,
   normalizeStage,
   repoNameToTitle,
   verifySignature,
@@ -239,6 +241,51 @@ async function userForInstallation(
   return data?.user_id ?? null;
 }
 
+/** Cards this user has mapped to a repo (folder-level via github_subpath, or whole-repo). */
+async function cardsForRepo(
+  supabase: SupabaseClient, userId: string, repo: RepoInfo,
+): Promise<Array<Record<string, unknown>>> {
+  const cols = "id, title, stage, github_subpath, word_count_history";
+  const [byId, byUrl] = await Promise.all([
+    supabase.from("publications").select(cols).eq("owner_id", userId).eq("github_repo_id", repo.id),
+    supabase.from("publications").select(cols).eq("owner_id", userId).eq("github_repo", repo.html_url),
+  ]);
+  const map = new Map<string, Record<string, unknown>>();
+  for (const c of [...(byId.data || []), ...(byUrl.data || [])]) map.set(c.id as string, c);
+  return [...map.values()];
+}
+
+/** Update one already-mapped card from a push (stage tag, scoped word count, activity). */
+async function applyPushToCard(
+  supabase: SupabaseClient, userId: string, card: Record<string, unknown>,
+  repo: RepoInfo, subpath: string | null, stage: string | null,
+  words: number | null, commitMessage: string,
+) {
+  const pubData: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    github_repo: repo.html_url,
+    github_repo_id: repo.id,
+  };
+  if (subpath) pubData.github_subpath = subpath;
+  if (stage) pubData.stage = stage;
+  if (words !== null) {
+    const hist = Array.isArray(card.word_count_history) ? card.word_count_history as Array<unknown> : [];
+    hist.push({ at: new Date().toISOString(), words });
+    pubData.word_count_history = hist.slice(-200);
+  }
+  await supabase.from("publications").update(pubData).eq("id", card.id as string);
+  await supabase.from("activity_log").insert({
+    user_id: userId, source: "github_app", action: "updated",
+    publication_id: card.id, publication_title: card.title,
+    details: {
+      repo: repo.full_name, subpath: subpath || null,
+      stage: stage || card.stage, commit_message: commitMessage,
+      ...(words !== null ? { word_count: words } : {}),
+    },
+    kabbo_yaml_detected: false,
+  });
+}
+
 // --- handlers ----------------------------------------------------------------
 
 async function handleWebhook(req: Request, rawBody: string): Promise<Response> {
@@ -302,14 +349,37 @@ async function handleWebhook(req: Request, rawBody: string): Promise<Response> {
   // -- push --
   if (event === "push") {
     const commits = body.commits || [];
+    const changedPaths = new Set<string>();
     let stage: string | null = null;
     let latestMessage = "";
     for (const c of commits) {
+      for (const p of [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]) changedPaths.add(p);
       const tag = extractStageTag(c.message || "");
       if (tag) stage = tag;
       latestMessage = c.message || latestMessage;
     }
+    const changedTopFolders = new Set(
+      [...changedPaths].filter((p) => p.includes("/")).map((p) => p.split("/")[0]),
+    );
     const token = await installationToken(installationId);
+
+    // Cards explicitly mapped to this repo (folder-level or whole-repo).
+    const mapped = await cardsForRepo(supabase, userId, repoInfo);
+
+    if (mapped.length) {
+      const updated: Array<{ id: string; subpath: string | null }> = [];
+      for (const card of mapped) {
+        const sub = card.github_subpath as string | null;
+        // Folder card: only react if its folder changed this push.
+        if (sub && changedTopFolders.size && !changedTopFolders.has(sub)) continue;
+        const words = await countTexWords(repoInfo.full_name, token, repoInfo.default_branch, 25, sub || undefined);
+        await applyPushToCard(supabase, userId, card, repoInfo, sub, stage, words || null, latestMessage);
+        updated.push({ id: card.id, subpath: sub });
+      }
+      return json({ success: true, mapped: true, updated_cards: updated, changed_folders: [...changedTopFolders] });
+    }
+
+    // No mapping yet → legacy single-paper behaviour (root .kabbo.yaml / title match).
     const yaml = await fetchKabboYaml(repoInfo.full_name, repoInfo.default_branch, token);
     if (!stage && yaml?.stage) stage = normalizeStage(yaml.stage);
     const words = await countTexWords(repoInfo.full_name, token, repoInfo.default_branch);
@@ -346,6 +416,39 @@ async function handleWebhook(req: Request, rawBody: string): Promise<Response> {
   }
 
   return json({ skipped: true, reason: `event '${event}' not handled` });
+}
+
+// GET /github-app/folders?token=<session jwt>&repo=<owner/name>
+// Lists a connected repo's top-level folders for the folder→card mapping UI.
+async function handleFolders(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token");
+  const repoFullName = url.searchParams.get("repo");
+  if (!token || !repoFullName) return json({ error: "Missing token or repo" }, 400);
+
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const { data: u } = await supabase.auth.getUser(token);
+  const userId = u.user?.id;
+  if (!userId) return json({ error: "Not authenticated" }, 401);
+
+  const { data: insts } = await supabase.from("github_installations")
+    .select("installation_id, repositories").eq("user_id", userId);
+  let installationId: number | null = null;
+  for (const i of insts || []) {
+    const repos = i.repositories;
+    if (Array.isArray(repos) && repos.some((r: { full_name?: string }) => r.full_name === repoFullName)) {
+      installationId = i.installation_id; break;
+    }
+    if (repos && (repos as { all?: boolean }).all) { installationId = i.installation_id; break; }
+  }
+  if (!installationId && (insts || []).length === 1) installationId = insts![0].installation_id;
+  if (!installationId) return json({ error: "No installation has access to this repo" }, 404);
+
+  const tok = await installationToken(installationId);
+  const meta = await getRepo(repoFullName, tok);
+  if (!meta) return json({ error: "Could not read repo" }, 404);
+  const folders = await listRepoFolders(repoFullName, tok, meta.default_branch);
+  return json({ repo: repoFullName, repo_id: meta.id, html_url: meta.html_url, default_branch: meta.default_branch, folders });
 }
 
 async function handleInstall(req: Request): Promise<Response> {
@@ -406,6 +509,7 @@ Deno.serve(async (req) => {
   const pathname = new URL(req.url).pathname;
 
   try {
+    if (req.method === "GET" && pathname.endsWith("/folders")) return await handleFolders(req);
     if (req.method === "GET" && pathname.endsWith("/install")) return await handleInstall(req);
     if (req.method === "GET" && pathname.endsWith("/callback")) return await handleCallback(req);
     if (req.method === "POST") return await handleWebhook(req, await req.text());

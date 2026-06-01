@@ -9,10 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserProfile } from '@/types/publication';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Camera, Loader2, ExternalLink, Key, Copy, Trash2, Plus, Code, Terminal, BookOpen, FolderSync, Github, Server, Database, FileCode, Download, Bot, Sparkles } from 'lucide-react';
+import { Camera, Loader2, ExternalLink, Key, Copy, Trash2, Plus, Code, Terminal, BookOpen, FolderSync, Github, Server, Database, FileCode, Download, Bot, Sparkles, FolderGit2 } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ActivityLog } from './ActivityLog';
 import { useGithubInstallations } from '@/hooks/useGithubInstallations';
+import { GithubFolderMap } from './GithubFolderMap';
 
 interface ApiKeyRow {
   id: string;
@@ -197,7 +198,10 @@ function ApiKeysSection({ userId }: { userId: string }) {
 }
 
 function GithubAppCard({ userId }: { userId: string }) {
-  const { installations, loading, connect, repoCount } = useGithubInstallations(userId);
+  const { installations, loading, connect, repoCount, refresh } = useGithubInstallations(userId);
+  const [mapRepo, setMapRepo] = useState<string | null>(null);
+  const reposOf = (inst: typeof installations[number]) =>
+    Array.isArray(inst.repositories) ? inst.repositories : [];
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
@@ -220,16 +224,29 @@ function GithubAppCard({ userId }: { userId: string }) {
       {loading ? (
         <div className="flex justify-center py-2"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
       ) : installations.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {installations.map((inst) => (
-            <div key={inst.installation_id} className="flex items-center justify-between rounded border border-border px-3 py-1.5">
-              <div className="min-w-0">
+            <div key={inst.installation_id} className="rounded border border-border p-2 space-y-1.5">
+              <div className="flex items-center justify-between">
                 <p className="text-xs font-medium truncate">{inst.account_login || 'GitHub account'}</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {inst.suspended_at ? 'Suspended' : `${repoCount(inst)} ${repoCount(inst) === 'all' ? 'repositories' : 'repo(s)'} connected`}
-                </p>
+                {inst.suspended_at && <span className="text-[10px] text-destructive">suspended</span>}
               </div>
-              {inst.suspended_at && <span className="text-[10px] text-destructive">suspended</span>}
+              {reposOf(inst).length > 0 ? (
+                <div className="space-y-1">
+                  {reposOf(inst).map((r) => (
+                    <div key={r.id} className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground truncate">{r.full_name}</span>
+                      <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 shrink-0" onClick={() => setMapRepo(r.full_name)}>
+                        <FolderGit2 className="w-3 h-3" /> Link folders
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">
+                  {repoCount(inst) === 'all' ? 'All repositories' : 'No repositories selected'}
+                </p>
+              )}
             </div>
           ))}
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1 mt-1" onClick={connect}>
@@ -240,6 +257,16 @@ function GithubAppCard({ userId }: { userId: string }) {
         <Button size="sm" className="h-8 text-xs gap-1.5" onClick={connect}>
           <Github className="w-3.5 h-3.5" /> Connect GitHub
         </Button>
+      )}
+
+      {mapRepo && (
+        <GithubFolderMap
+          open={!!mapRepo}
+          onOpenChange={(o) => { if (!o) setMapRepo(null); }}
+          repoFullName={mapRepo}
+          userId={userId}
+          onSaved={refresh}
+        />
       )}
     </div>
   );

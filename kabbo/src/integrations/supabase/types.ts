@@ -256,6 +256,7 @@ export type Database = {
           data_sources: string[] | null
           github_repo: string | null
           github_repo_id: number | null
+          github_subpath: string | null
           grants: string[] | null
           id: string
           links: string[] | null
@@ -281,6 +282,7 @@ export type Database = {
           data_sources?: string[] | null
           github_repo?: string | null
           github_repo_id?: number | null
+          github_subpath?: string | null
           grants?: string[] | null
           id?: string
           links?: string[] | null
@@ -306,6 +308,7 @@ export type Database = {
           data_sources?: string[] | null
           github_repo?: string | null
           github_repo_id?: number | null
+          github_subpath?: string | null
           grants?: string[] | null
           id?: string
           links?: string[] | null
