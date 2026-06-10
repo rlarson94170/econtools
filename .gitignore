@@ -1,0 +1,22 @@
+# Repo-root allowlist.
+#
+# This directory (9EconTools) is the working tree of the `econtools` git repo,
+# but it ALSO physically holds many unrelated workspace folders and loose files
+# (other projects, screenshots, PDFs, exports). To stop a stray `git add -A`
+# from sweeping those into the repo, we ignore EVERYTHING at the top level and
+# then re-include only the folders/files this repo actually tracks.
+#
+# Adding a new top-level project to this repo? Add a matching `!/<name>/` line.
+
+/*
+
+!/.gitignore
+!/README.md
+!/.claude-plugin/
+!/diebolt/
+!/ehrstyle/
+!/janluiten/
+!/kabbo/
+!/kris/
+!/tanniedi/
+!/tyler/
