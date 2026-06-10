@@ -7,18 +7,12 @@ interface KabboWordmarkProps {
 }
 
 /**
- * Kabbo wordmark – "KABBO" in twin parallel contours (Proposal E).
+ * Kabbo wordmark – "KABBO" in solid geometric all-caps.
  *
  * Geometric all-caps armature (rational bowls on B, true-circle O) drawn
- * with a layered-stroke trick: an outer ochre stroke defines the letter
- * silhouette, then an inner background-coloured stroke carves out the
- * interior, leaving a ~3-unit contour line on each side. The look borrows
- * from ǀxam / San rock-art contour drawing, where eland and therianthrope
- * figures were outlined rather than filled.
- *
- * The inner stroke uses `var(--background)` so it tracks light/dark mode
- * automatically. The outer stroke uses `currentColor`, so the wordmark
- * takes its colour from the parent text colour (default: brand ochre).
+ * as solid filled letterforms via a single heavy stroke. The wordmark uses
+ * `text-foreground`, so it tracks light/dark mode automatically: near-black
+ * on light backgrounds, near-white on dark.
  */
 export function KabboWordmark({ className, height = 30 }: KabboWordmarkProps) {
   const viewBox = '0 0 410 130';
@@ -58,22 +52,12 @@ export function KabboWordmark({ className, height = 30 }: KabboWordmarkProps) {
       xmlns="http://www.w3.org/2000/svg"
       role="img"
       aria-label="Kabbo"
-      className={cn('text-brand-ochre', className)}
+      className={cn('text-foreground', className)}
     >
-      {/* Outer silhouette – currentColor (ochre by default) */}
+      {/* Solid letterforms – foreground colour (black on light, white on dark) */}
       <g
         stroke="currentColor"
         strokeWidth={20}
-        strokeLinecap="butt"
-        strokeLinejoin="miter"
-        fill="none"
-      >
-        {paths}
-      </g>
-      {/* Inner carve – background colour, carves out the interior */}
-      <g
-        stroke="hsl(var(--background))"
-        strokeWidth={14}
         strokeLinecap="butt"
         strokeLinejoin="miter"
         fill="none"
