@@ -1,17 +1,17 @@
 {
   "name": "kabbo",
-  "description": "Manage your academic publication pipeline from Claude Code — list, search, create, move, analyse, export BibTeX, track reminders, and sync papers (GitHub + Overleaf) via the Kabbo MCP server.",
-  "version": "1.0.0",
+  "description": "Manage your academic publication pipeline from Claude Code — list, search, create, move, analyse, export BibTeX, and track reminders via the Kabbo MCP server.",
+  "version": "1.1.0",
   "author": { "name": "Johan Fourie", "email": "johanf@sun.ac.za" },
   "homepage": "https://kabbo.app",
   "repository": "https://github.com/johanfourieza/econtools",
   "license": "MIT",
-  "keywords": ["academic", "publications", "research", "pipeline", "bibtex", "overleaf", "github", "mcp"],
+  "keywords": ["academic", "publications", "research", "pipeline", "bibtex", "mcp"],
   "userConfig": {
     "api_key": {
       "type": "string",
       "title": "Kabbo API key",
-      "description": "Create one at kabbo.app → Settings → Developer → Create Key.",
+      "description": "Create one at kabbo.app → Settings → AI Integration → Create Key.",
       "sensitive": true,
       "required": true
     }
@@ -19,7 +19,8 @@
   "mcpServers": {
     "kabbo": {
       "type": "http",
-      "url": "https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/mcp-server?api_key=${user_config.api_key}"
+      "url": "https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/mcp-server",
+      "headers": { "x-api-key": "${user_config.api_key}" }
     }
   }
 }

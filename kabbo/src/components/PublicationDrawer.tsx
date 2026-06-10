@@ -694,26 +694,6 @@ export function PublicationDrawer({
               </div>
             )}
 
-            {/* Writing momentum (captured by the GitHub App on each push) */}
-            {localPub.wordCountHistory && localPub.wordCountHistory.length > 0 && (() => {
-              const hist = localPub.wordCountHistory!;
-              const latest = hist[hist.length - 1];
-              const weekAgo = Date.now() - 7 * 864e5;
-              const baseline = [...hist].reverse().find((p) => new Date(p.at).getTime() <= weekAgo) ?? hist[0];
-              const delta = latest.words - baseline.words;
-              return (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>{latest.words.toLocaleString()} words</span>
-                  {delta !== 0 && (
-                    <span className={delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}>
-                      {delta > 0 ? '+' : ''}{delta.toLocaleString()} this week
-                    </span>
-                  )}
-                </div>
-              );
-            })()}
-
             {/* Add new link form */}
             {showCollabLinkForm ? (
               <div className="space-y-2 p-2 bg-secondary/20 rounded-md">

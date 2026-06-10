@@ -624,25 +624,11 @@ function createMcpServer(apiKey: string) {
   });
 
   // ===========================================================================
-  // Tools 17-23 — Integration & workflow (new in 2.1)
+  // Tools — Workflow & metadata
   // ===========================================================================
 
-  server.tool("list_connected_repos", {
-    description: "List GitHub installations and repositories connected to your Kabbo account via the Kabbo GitHub App.",
-    inputSchema: { type: "object" as const, properties: {} },
-    handler: async () => {
-      const { userId, supabase } = await getAuthenticatedUser(apiKey);
-      const { data, error } = await supabase
-        .from("github_installations")
-        .select("installation_id, account_login, account_type, repositories, suspended_at, created_at")
-        .eq("user_id", userId);
-      if (error) throw error;
-      return textResult({ count: (data || []).length, installations: data });
-    },
-  });
-
   server.tool("link_repo", {
-    description: "Link a GitHub repository and/or Overleaf project to a publication so commits and writing show up against it.",
+    description: "Attach a GitHub repository URL and/or Overleaf project URL to a publication as metadata (e.g. where the data or paper source lives).",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -662,33 +648,6 @@ function createMcpServer(apiKey: string) {
         .eq("id", String(params.id)).eq("owner_id", userId);
       if (error) throw error;
       return textResult({ success: true, publication_id: params.id, linked: patch });
-    },
-  });
-
-  server.tool("get_writing_progress", {
-    description: "Get the LaTeX word-count history for a publication (captured on each push to its connected GitHub repo). Use to report writing momentum.",
-    inputSchema: {
-      type: "object" as const,
-      properties: { id: { type: "string", description: "Publication UUID" } },
-      required: ["id"],
-    },
-    handler: async (params: Record<string, unknown>) => {
-      const { userId, supabase } = await getAuthenticatedUser(apiKey);
-      const { data, error } = await supabase
-        .from("publications").select("id, title, word_count_history")
-        .eq("id", String(params.id)).eq("owner_id", userId).single();
-      if (error) throw error;
-      const hist = (data?.word_count_history || []) as Array<{ at: string; words: number }>;
-      const latest = hist[hist.length - 1]?.words ?? null;
-      const first = hist[0]?.words ?? null;
-      return textResult({
-        publication_id: data?.id,
-        title: data?.title,
-        points: hist.length,
-        latest_words: latest,
-        delta_since_first: latest !== null && first !== null ? latest - first : null,
-        history: hist,
-      });
     },
   });
 
@@ -860,7 +819,7 @@ function createMcpServer(apiKey: string) {
     description: "Summarise the past week's pipeline activity and progress.",
     handler: () => ({
       messages: [{ role: "user" as const, content: { type: "text" as const, text:
-        "Run my Kabbo weekly review. Call get_activity_log with days=7 and get_pipeline_summary. Summarise what changed, which papers advanced a stage, any new writing momentum (get_writing_progress for active drafts), and flag anything stuck. End with 2-3 concrete suggestions for next week." } }],
+        "Run my Kabbo weekly review. Call get_activity_log with days=7 and get_pipeline_summary. Summarise what changed, which papers advanced a stage, and flag anything stuck. End with 2-3 concrete suggestions for next week." } }],
     }),
   });
 

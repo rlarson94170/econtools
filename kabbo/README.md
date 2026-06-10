@@ -24,16 +24,16 @@ ochre, the pigment used in San rock art.
 - **Drag-and-drop pipeline** across seven stages
 - **Team collaboration** — invite members, per-role visibility, team analytics
 - **Publication sharing** — invite collaborators as viewer or editor
-- **Claude Code / Codex integration** — MCP server with 23 tools plus resources
-  and prompts; install the Kabbo Claude Code plugin in one command
-- **GitHub App** — install once, pick repos, and pushes / releases / merged PRs
-  keep your pipeline current; `.kabbo.yaml` and `[stage:xxx]` commit tags drive
-  it, and LaTeX word counts track writing momentum
-- **Overleaf** — tracked through Overleaf's GitHub sync (no Overleaf API needed)
+- **AI-agent integration** — connect Claude Code, Codex, or Gemini to the Kabbo
+  MCP server with a personal API key, and your agent can read and update the
+  pipeline on request ("I just submitted this paper — update Kabbo")
 - **Import / export** — BibTeX (in and out), PDF, Excel
-- **REST API and webhooks** — automate the pipeline from external tools
 - **Offline support** with a sync queue
 - **Light / dark mode** and swappable palettes
+
+Kabbo is driven two ways: by you, in the web app, or by your AI coding agent over
+MCP. There is no GitHub / Overleaf / webhook automation — an agent records a
+data-repo or Overleaf link as plain card metadata when you ask it to.
 
 ## Tech stack
 
@@ -61,29 +61,25 @@ Dev server runs at `http://localhost:8080`.
 | `VITE_SUPABASE_URL` | Your Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Your Supabase anon / public key |
 
-## AI integration (MCP)
+## Connect your agent (Claude Code · Codex · Gemini)
 
 The Supabase edge function at `supabase/functions/mcp-server/` exposes the MCP
 tools (CRUD + analytics + search + bulk updates + reminders + BibTeX in/out +
-repo linking + writing progress), plus MCP **resources** (`kabbo://...`) and
-**prompts** (`weekly_review`, `annual_report`, …). Agents authenticate with a
-personal API key (generate one under *Settings → Developer*).
+repo/Overleaf linking), plus MCP **resources** (`kabbo://...`) and **prompts**
+(`weekly_review`, `annual_report`, …). All three agents connect to the same
+server, authenticated with a personal API key (generate one under *Settings → AI
+Integration → Create Key*).
 
-- **Claude Code users** install the one-command plugin:
+- **Claude Code** — install the one-command plugin:
   `/plugin marketplace add johanfourieza/econtools` then `/plugin install kabbo`.
-  It bundles the MCP config, the skill, and slash commands (`/kabbo:status`,
-  `/kabbo:sync`, `/kabbo:init`, `/kabbo:install-hooks`). The standalone
-  `skill.md` download from *Settings → AI Integration* still works too.
-- **Codex users** point Codex at the repo-root `AGENTS.md`.
+  It bundles the MCP config, the skill, and the `/kabbo:status` command. The
+  standalone `skill.md` download from *Settings → AI Integration* still works too.
+- **Codex** — point Codex at the repo-root `AGENTS.md`.
+- **Gemini CLI** — add the server to `~/.gemini/settings.json` (copy the config
+  from *Settings → AI Integration*; it uses `httpUrl` + an `x-api-key` header).
 
-### GitHub App
-
-Install the Kabbo GitHub App from *Settings → Developer → Connect GitHub*, pick
-your repos, and the pipeline updates itself: pushes match cards and record LaTeX
-word counts, `[stage:xxx]` commit tags and stage-named releases move cards, and a
-repo with a `.kabbo.yaml` is auto-imported on install. The App webhook is signed
-(no API key in URLs); the per-repo `github-webhook` remains for manual setups.
-
+Once connected, your agent keeps the pipeline current on request — filling in the
+journal, co-authors, a data-repo link, and moving the card to the right column.
 See `AGENTS.md` for the full tool reference and example prompts.
 
 ## Deployment
@@ -109,14 +105,12 @@ Regenerate it from source with `node brand/generate.mjs` and open
 - `src/hooks/useSupabasePublications.ts` — core data layer
 - `src/hooks/useTeams.ts` — teams hook
 - `src/data/kabboQuotes.ts` — ǀKabbo wisdom quotes shown on stage transitions
-- `src/hooks/useGithubInstallations.ts` — GitHub App install state + connect flow
-- `plugin/` — the Kabbo Claude Code plugin (manifest, skill, commands, hooks);
+- `plugin/` — the Kabbo Claude Code plugin (manifest, skill, `/kabbo:status`);
   surfaced to users via `.claude-plugin/marketplace.json` at the repo root
 - `supabase/functions/` — Deno edge functions (`mcp-server`, `api-publications`,
-  `github-app`, `github-webhook`, `ingest-publication`); shared GitHub helpers
-  in `supabase/functions/_shared/github.ts`
+  `ingest-publication`); shared helpers in `supabase/functions/_shared/`
 - `supabase/migrations/` — PostgreSQL migrations
-- `AGENTS.md` — contract for agents (Claude Code, Codex)
+- `AGENTS.md` — contract for agents (Claude Code, Codex, Gemini)
 - `theplan.txt` — long-running roadmap / strategy notes
 
 ## License

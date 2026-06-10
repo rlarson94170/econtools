@@ -39,6 +39,7 @@ kabbo-favicon16-preview.png
 *.sln
 *.sw?
 supabase-commands.txt
+supabase/.temp/
 
 # Brand kit — kept local, not shipped with the web app
 brand/

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import { useSupabasePublications } from '@/hooks/useSupabasePublications';
@@ -38,22 +38,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Users, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
-import { toast as sonnerToast } from 'sonner';
 
 const Index = () => {
   const { isAuthenticated, loading: authLoading, profile, user, signOut, refetchProfile } = useAuth();
-
-  // Surface the GitHub App connect redirect (github-app/callback → /?github=...)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const gh = params.get('github');
-    if (!gh) return;
-    if (gh === 'connected') sonnerToast.success('GitHub connected — your selected repos will now sync to Kabbo.');
-    else if (gh === 'error') sonnerToast.error('GitHub connection failed. Please try again from Settings → Developer.');
-    params.delete('github');
-    const qs = params.toString();
-    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
-  }, []);
 
   const {
     state,

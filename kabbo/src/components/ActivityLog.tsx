@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Activity, Github, Server, Terminal, FileCode, RefreshCw, Loader2 } from 'lucide-react';
+import { Activity, Server, Terminal, FileCode, RefreshCw, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ActivityEntry {
@@ -17,14 +17,12 @@ interface ActivityEntry {
   created_at: string;
 }
 
-const sourceIcons: Record<string, typeof Github> = {
-  webhook: Github,
+const sourceIcons: Record<string, typeof Server> = {
   api: Terminal,
   mcp: Server,
 };
 
 const sourceColors: Record<string, string> = {
-  webhook: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
   api: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   mcp: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
 };
@@ -86,12 +84,12 @@ export function ActivityLog({ userId }: { userId: string }) {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Recent updates from API, GitHub webhooks, and MCP server.
+        Recent updates from your agents (MCP) and the API.
       </p>
 
       {entries.length === 0 ? (
         <div className="text-center py-6 text-xs text-muted-foreground">
-          No activity yet. Updates from webhooks, API calls, and MCP interactions will appear here.
+          No activity yet. Updates from your AI agents and API calls will appear here.
         </div>
       ) : (
         <ScrollArea className="h-[300px]">
@@ -117,11 +115,6 @@ export function ActivityLog({ userId }: { userId: string }) {
                       <span className="font-medium">
                         {actionLabels[entry.action] || entry.action}
                       </span>
-                      {entry.kabbo_yaml_detected && (
-                        <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0">
-                          .kabbo.yaml
-                        </Badge>
-                      )}
                     </div>
                     {entry.publication_title && (
                       <p className="text-muted-foreground truncate mt-0.5">

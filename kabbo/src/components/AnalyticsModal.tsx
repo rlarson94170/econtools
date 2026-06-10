@@ -1,4 +1,4 @@
-import { X, TrendingUp, Clock, Users, FileText, Award, Percent, Calendar, Target, BookOpen, Link2, GitBranch, Bell } from 'lucide-react';
+import { X, TrendingUp, Clock, Users, FileText, Award, Percent, Calendar, Target, BookOpen, Link2, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Publication, Stage, DEFAULT_STAGES } from '@/types/publication';
 import { useMemo } from 'react';
@@ -525,47 +525,32 @@ export function AnalyticsModal({ isOpen, onClose, cards, stages, publishedCards 
             </div>
           </div>
 
-          {/* Resources & Connections */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-secondary/30 rounded-lg p-4">
-              <h3 className="font-display font-medium text-sm mb-3 flex items-center gap-2">
-                <Link2 className="w-4 h-4 text-muted-foreground" />
-                Resources
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total links</span>
-                  <span className="font-medium">{stats.totalLinks}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">GitHub repos</span>
-                  <span className="font-medium">{stats.withGithub}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Unique grants</span>
-                  <span className="font-medium">{stats.uniqueGrants}</span>
-                </div>
+          {/* Resources */}
+          <div className="bg-secondary/30 rounded-lg p-4">
+            <h3 className="font-display font-medium text-sm mb-3 flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-muted-foreground" />
+              Resources
+            </h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total links</span>
+                <span className="font-medium">{stats.totalLinks}</span>
               </div>
-            </div>
-
-            <div className="bg-secondary/30 rounded-lg p-4">
-              <h3 className="font-display font-medium text-sm mb-3 flex items-center gap-2">
-                <GitBranch className="w-4 h-4 text-muted-foreground" />
-                Integrations
-              </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">GitHub repos</span>
-                  <span className="font-medium">{stats.withGithub}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Overleaf projects</span>
-                  <span className="font-medium">{stats.withOverleaf}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Working papers</span>
-                  <span className="font-medium">{stats.workingPaperCount}</span>
-                </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">GitHub repos</span>
+                <span className="font-medium">{stats.withGithub}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Overleaf projects</span>
+                <span className="font-medium">{stats.withOverleaf}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Unique grants</span>
+                <span className="font-medium">{stats.uniqueGrants}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Working papers</span>
+                <span className="font-medium">{stats.workingPaperCount}</span>
               </div>
             </div>
           </div>

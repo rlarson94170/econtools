@@ -1,6 +1,6 @@
 ---
 name: kabbo
-description: Manage your academic publication pipeline via the Kabbo MCP server. List, search, create, update, move, and analyse publications; track stalled papers and reminders; export/import BibTeX; sync papers from GitHub and Overleaf; review team progress.
+description: Manage your academic publication pipeline via the Kabbo MCP server. List, search, create, update, move, and analyse publications; track stalled papers and reminders; export/import BibTeX; link a data repo or Overleaf project; review team progress.
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 user-invocable: true
 ---
@@ -23,20 +23,20 @@ Otherwise add this to `~/.claude/settings.json` (replace YOUR_API_KEY):
   "mcpServers": {
     "kabbo": {
       "type": "http",
-      "url": "https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/mcp-server?api_key=YOUR_API_KEY"
+      "url": "https://jydnsbaztvmjkebhmoia.supabase.co/functions/v1/mcp-server",
+      "headers": { "x-api-key": "YOUR_API_KEY" }
     }
   }
 }
 ```
 
-Generate a key at kabbo.app → **Settings → Developer → Create Key**.
+The same server backs **Codex** (via `AGENTS.md`) and **Gemini CLI** (in
+`~/.gemini/settings.json`, using `httpUrl` instead of `url`). Generate a key at
+kabbo.app → **Settings → AI Integration → Create Key**.
 
 ## Slash commands (plugin)
 
 - `/kabbo:status` — quick pipeline overview.
-- `/kabbo:sync` — read the current git repo and create/update its Kabbo card.
-- `/kabbo:init` — scaffold a `.kabbo.yaml` for the current repo.
-- `/kabbo:install-hooks` — install a local git hook (for repos not on the GitHub App).
 
 ## Tools
 
@@ -52,16 +52,14 @@ Generate a key at kabbo.app → **Settings → Developer → Create Key**.
 - **get_pipeline_summary** — counts by stage, stalled (30+ days), recently updated
 - **get_stalled_papers** — papers inactive for N days (default 30)
 - **get_analytics** — velocity, avg time per stage, breakdowns by author/theme/grant/year/output_type
-- **get_activity_log** — recent activity from all sources (web, api, mcp, webhook, github_app)
+- **get_activity_log** — recent activity from all sources (api, mcp)
 
 ### Search & batch
 - **search_publications** — multi-field search (title, authors, notes, themes, grants, year)
 - **bulk_update** — array of `{id, ...updates}`
 
-### Integration & workflow
-- **list_connected_repos** — GitHub App installations + repos linked to your account
-- **link_repo** — attach a `github_repo` and/or `overleaf_url` to a publication
-- **get_writing_progress** — LaTeX word-count history for a paper (writing momentum)
+### Workflow & metadata
+- **link_repo** — attach a `github_repo` URL and/or `overleaf_url` to a publication (where the data or source lives)
 - **set_target_journal** — set the intended journal
 - **import_bibtex** — create publications from a BibTeX string
 - **manage_related_papers** — list/add/remove related papers
@@ -83,40 +81,19 @@ Generate a key at kabbo.app → **Settings → Developer → Create Key**.
 `morning_checkin` · `weekly_review` · `annual_report` (arg: year) ·
 `submission_prep` (arg: title) · `stalled_triage`
 
-## GitHub integration (recommended: the Kabbo App)
+## Updating the pipeline on request
 
-Install the **Kabbo GitHub App** once (kabbo.app → Settings → Developer →
-Connect GitHub), pick your repos, and the pipeline updates itself:
+This is the main job. When the user says something like *"I just submitted the
+climate paper to the AER — update Kabbo"*:
 
-- **push** → matches the card (by repo, then title), applies `.kabbo.yaml`,
-  and records a LaTeX word count for writing momentum;
-- a **`[stage:xxx]`** tag in a commit message moves the card,
-  e.g. `git commit -m "Submitted to AER [stage:submitted]"`;
-- a published **release** named/tagged as a stage moves the card;
-- a repo with a `.kabbo.yaml` is **auto-imported** as a card on install.
+1. `search_publications` (or `list_publications`) to find the card by title.
+2. `update_publication` to fill in the metadata — `target_journal`, `authors`,
+   `themes`, `notes` — and `link_repo` to record the GitHub/Overleaf URL where
+   the data or source lives.
+3. `move_stage` to the correct column (here, `submitted`).
 
-### `.kabbo.yaml`
-
-```yaml
-title: "My Paper Title"
-stage: draft        # idea | draft | submitted | revise_resubmit | resubmitted | accepted | published
-authors:
-  - Alice Smith
-  - Bob Jones
-themes:
-  - colonial economic history
-output_type: journal
-target_year: 2026
-target_journal: "Journal of Economic History"
-overleaf_url: "https://www.overleaf.com/project/abc123"
-```
-
-## Overleaf
-
-Kabbo tracks Overleaf through GitHub: in Overleaf use **Menu → Sync → GitHub**
-to link your project to a repo, then install the Kabbo GitHub App on that repo.
-Edits you push from Overleaf flow into Kabbo, word count and all. Put your
-project URL in `.kabbo.yaml` as `overleaf_url` so the card deep-links back.
+There is no GitHub/Overleaf automation — you set these fields directly. The repo
+and Overleaf links are plain metadata on the card.
 
 ## Common workflows
 

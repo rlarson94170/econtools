@@ -9,11 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserProfile } from '@/types/publication';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Camera, Loader2, ExternalLink, Key, Copy, Trash2, Plus, Code, Terminal, BookOpen, FolderSync, Github, Server, Database, FileCode, Download, Bot, Sparkles, FolderGit2 } from 'lucide-react';
+import { Camera, Loader2, ExternalLink, Key, Copy, Trash2, Plus, Terminal, BookOpen, Server, Database, Download, Bot, Sparkles, Gem } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ActivityLog } from './ActivityLog';
-import { useGithubInstallations } from '@/hooks/useGithubInstallations';
-import { GithubFolderMap } from './GithubFolderMap';
 
 interface ApiKeyRow {
   id: string;
@@ -197,81 +195,6 @@ function ApiKeysSection({ userId }: { userId: string }) {
   );
 }
 
-function GithubAppCard({ userId }: { userId: string }) {
-  const { installations, loading, connect, repoCount, refresh } = useGithubInstallations(userId);
-  const [mapRepo, setMapRepo] = useState<string | null>(null);
-  const reposOf = (inst: typeof installations[number]) =>
-    Array.isArray(inst.repositories) ? inst.repositories : [];
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-md bg-foreground/5 flex items-center justify-center">
-          <Github className="w-4 h-4" />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-medium">Kabbo for GitHub</p>
-          <p className="text-[10px] text-muted-foreground">Install once · tracks every repo you pick</p>
-        </div>
-      </div>
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
-        Connect the Kabbo GitHub App and your pipeline updates itself as you work:
-        pushes, releases and merged PRs move cards, a repo's <code className="bg-muted px-1 rounded text-[10px]">.kabbo.yaml</code>{' '}
-        fills in metadata, and your LaTeX word count is tracked so drafts show real momentum.
-        No webhook setup, no API key in a URL.
-      </p>
-
-      {loading ? (
-        <div className="flex justify-center py-2"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
-      ) : installations.length > 0 ? (
-        <div className="space-y-2">
-          {installations.map((inst) => (
-            <div key={inst.installation_id} className="rounded border border-border p-2 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium truncate">{inst.account_login || 'GitHub account'}</p>
-                {inst.suspended_at && <span className="text-[10px] text-destructive">suspended</span>}
-              </div>
-              {reposOf(inst).length > 0 ? (
-                <div className="space-y-1">
-                  {reposOf(inst).map((r) => (
-                    <div key={r.id} className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-muted-foreground truncate">{r.full_name}</span>
-                      <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 shrink-0" onClick={() => setMapRepo(r.full_name)}>
-                        <FolderGit2 className="w-3 h-3" /> Link folders
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[10px] text-muted-foreground">
-                  {repoCount(inst) === 'all' ? 'All repositories' : 'No repositories selected'}
-                </p>
-              )}
-            </div>
-          ))}
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 mt-1" onClick={connect}>
-            <Plus className="w-3 h-3" /> Add or manage repos
-          </Button>
-        </div>
-      ) : (
-        <Button size="sm" className="h-8 text-xs gap-1.5" onClick={connect}>
-          <Github className="w-3.5 h-3.5" /> Connect GitHub
-        </Button>
-      )}
-
-      {mapRepo && (
-        <GithubFolderMap
-          open={!!mapRepo}
-          onOpenChange={(o) => { if (!o) setMapRepo(null); }}
-          repoFullName={mapRepo}
-          userId={userId}
-          onSaved={refresh}
-        />
-      )}
-    </div>
-  );
-}
-
 function IntegrationGuide({ userId }: { userId: string }) {
   // Derive the project ref from VITE_SUPABASE_URL (always set); fall back to the
   // optional VITE_SUPABASE_PROJECT_ID. Avoids "undefined.supabase.co" URLs in prod.
@@ -280,7 +203,6 @@ function IntegrationGuide({ userId }: { userId: string }) {
   const ingestUrl = `https://${projectId}.supabase.co/functions/v1/ingest-publications`;
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/api-publications`;
   const mcpUrl = `https://${projectId}.supabase.co/functions/v1/mcp-server`;
-  const webhookUrl = `https://${projectId}.supabase.co/functions/v1/github-webhook`;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -294,94 +216,29 @@ function IntegrationGuide({ userId }: { userId: string }) {
     "title": "My Paper Title",
     "authors": ["Alice Smith", "Bob Jones"],
     "stage": "draft",
-    "notes": "Synced from Overleaf",
-    "overleaf_link": "https://www.overleaf.com/project/abc123",
-    "github_repo": "https://github.com/user/repo"
+    "notes": "Drafting the methods section"
   }'`;
 
-  const overleafPrompt = `I have a Kabbo ingest API at:
-${ingestUrl}
+  // MCP config for Claude Code / Codex (HTTP server, key in an x-api-key header).
+  const mcpConfig = `{
+  "mcpServers": {
+    "kabbo": {
+      "type": "http",
+      "url": "${mcpUrl}",
+      "headers": { "x-api-key": "YOUR_API_KEY" }
+    }
+  }
+}`;
 
-It accepts POST with header "x-api-key: <key>" and JSON body:
-{ title, authors[], stage, notes, overleaf_link, github_repo }
-
-Valid stages: idea, draft, submitted, revise_resubmit, resubmitted, accepted, published
-(Also accepts aliases: wip→draft, r&r→revise_resubmit, in-review→submitted, etc.)
-
-Write a script that:
-1. Clones my Overleaf projects via git (I have premium git access)
-2. Parses each main.tex for \\title{} and \\author{} metadata
-3. POSTs each project to the ingest API with stage "draft" and the Overleaf project URL
-4. Skips projects that haven't changed since last sync (use a local .last-sync file)
-5. Runs via cron daily at 9am`;
-
-  const dropboxPrompt = `I have a Kabbo ingest API at:
-${ingestUrl}
-
-It accepts POST with header "x-api-key: <key>" and JSON body:
-{ title, authors[], stage, notes }
-
-Valid stages: idea, draft, submitted, revise_resubmit, resubmitted, accepted, published
-
-I organise my papers in Dropbox with this folder structure:
-Papers/
-  Ideas/        → stage "idea"
-  Drafts/       → stage "draft"
-  Submitted/    → stage "submitted"
-  Under Review/ → stage "revise_resubmit"
-  Accepted/     → stage "accepted"
-  Published/    → stage "published"
-
-Each subfolder name is the paper title.
-
-Write a script that:
-1. Uses the Dropbox API to list folders under Papers/
-2. Maps each folder's parent to a pipeline stage
-3. POSTs each paper to the ingest API
-4. Only syncs papers modified since last run
-5. Runs via cron every 6 hours`;
-
-  const githubSyncPrompt = `I have a Kabbo ingest API at:
-${ingestUrl}
-
-It accepts POST with header "x-api-key: <key>" and JSON body:
-{ title, authors[], stage, notes, github_repo }
-
-Valid stages: idea, draft, submitted, revise_resubmit, resubmitted, accepted, published
-
-I also have a GitHub webhook endpoint at:
-${webhookUrl}?api_key=<key>
-
-I keep my academic papers in separate GitHub repos. Each repo may contain a .kabbo.yaml file at the root that declares metadata:
-
-# .kabbo.yaml
-title: "My Paper Title"
-stage: draft
-authors:
-  - Alice Smith
-  - Bob Jones
-themes:
-  - climate
-output_type: journal-article
-target_year: 2025
-
-If .kabbo.yaml exists, use its metadata instead of inferring from the repo name. Otherwise, fall back to extracting the title from the repo name (converting kebab-case/snake_case to Title Case) and checking commit messages for [stage:xxx] tags.
-
-Write a script that:
-1. Uses the GitHub API (with a personal access token) to list all my repos
-2. For each repo, checks for .kabbo.yaml first – if found, use its metadata
-3. If no .kabbo.yaml, extracts the paper title from the repo name and checks recent commits for [stage:xxx] tags
-4. POSTs each paper to the ingest API with the detected metadata and the GitHub repo URL
-5. Optionally sets up the Kabbo webhook on each repo that doesn't have it yet (using the webhook URL above)
-6. Saves a .kabbo-last-sync file to skip repos that haven't changed
-7. Can be run manually or via cron daily at 9am
-
-The script should:
-- Accept --github-token, --kabbo-api-key, and --github-username as CLI arguments
-- Have a --dry-run flag to preview changes without pushing
-- Print a summary table of all repos and their detected stages
-- Skip repos that are forks or archived
-- Have an --init flag that creates a .kabbo.yaml template in repos that don't have one`;
+  // Gemini CLI uses ~/.gemini/settings.json with httpUrl + headers.
+  const geminiConfig = `{
+  "mcpServers": {
+    "kabbo": {
+      "httpUrl": "${mcpUrl}",
+      "headers": { "x-api-key": "YOUR_API_KEY" }
+    }
+  }
+}`;
 
   const skillFileUrl = `${window.location.origin}/skill.md`;
   const curlInstall = `mkdir -p ~/.claude/skills/kabbo && curl -o ~/.claude/skills/kabbo/skill.md ${skillFileUrl}`;
@@ -395,18 +252,16 @@ The script should:
           AI Integration
         </h3>
         <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          Kabbo works with AI coding assistants so you can manage your publication
-          pipeline from the command line or chat. Ask questions like "How's my
-          pipeline looking?" or "Which papers have been stuck longest?" and get
-          structured answers from your own data.
+          Connect your AI coding agent — Claude Code, Codex, or Gemini — and it can
+          manage your pipeline on request. Tell it <em>"I just submitted the climate
+          paper to the AER — update Kabbo"</em> and it will fill in the journal,
+          co-authors and links, then move the card to the right column. All three
+          connect to the same Kabbo MCP server with a personal API key.
         </p>
       </div>
 
-      {/* GitHub App — the frictionless "install once" path */}
-      <GithubAppCard userId={userId} />
-
       {/* Platform cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Claude Code card */}
         <div className="rounded-lg border border-border bg-card p-4 space-y-2">
           <div className="flex items-center gap-2">
@@ -477,6 +332,33 @@ The script should:
             Place in your project root. Codex reads it automatically.
           </p>
         </div>
+
+        {/* Gemini card */}
+        <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-md bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Gem className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Gemini CLI</p>
+              <p className="text-[10px] text-muted-foreground">by Google</p>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Google's terminal agent reads MCP servers from{' '}
+            <code className="bg-muted px-1 rounded text-[10px]">~/.gemini/settings.json</code>.
+            Add the Kabbo server and it gets every pipeline tool.
+          </p>
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => copyToClipboard(geminiConfig)}>
+              <Copy className="w-3 h-3" />
+              Copy Gemini config
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Merge into <code className="bg-muted px-0.5 rounded text-[9px]">~/.gemini/settings.json</code>
+          </p>
+        </div>
       </div>
 
       {/* What you need section */}
@@ -484,9 +366,9 @@ The script should:
         <p className="text-xs font-medium mb-2">What you need to get started:</p>
         <ol className="text-[11px] text-muted-foreground list-decimal ml-4 space-y-1">
           <li>Create an <strong>API key</strong> in the section above</li>
-          <li>Download the <strong>skill file</strong> (Claude Code) or <strong>AGENTS.md</strong> (Codex) using the buttons above</li>
-          <li>Copy your <strong>MCP config</strong> (shown when you create a key) into your Claude Code settings</li>
-          <li>Ask Claude Code: <em>"How's my pipeline looking?"</em></li>
+          <li>Add the <strong>MCP config</strong> for your agent: the <strong>plugin</strong> or <strong>skill file</strong> (Claude Code), <strong>AGENTS.md</strong> (Codex), or the <strong>Gemini config</strong> (Gemini) — buttons above</li>
+          <li>Paste your API key where the config says <code className="bg-muted px-1 rounded text-[10px]">YOUR_API_KEY</code></li>
+          <li>Ask your agent: <em>"How's my pipeline looking?"</em></li>
         </ol>
       </div>
 
@@ -497,57 +379,11 @@ The script should:
           Integration guides
         </h3>
         <p className="text-xs text-muted-foreground mt-1">
-          Detailed setup for specific platforms and sync workflows.
+          API and MCP reference for connecting your agent.
         </p>
       </div>
 
       <Accordion type="single" collapsible className="w-full">
-        <AccordionItem value="github-webhook">
-          <AccordionTrigger className="text-sm py-2">
-            <span className="flex items-center gap-1.5">
-              <Github className="w-3.5 h-3.5" />
-              GitHub Webhook (manual, per-repo)
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Most people should use <strong>Connect GitHub</strong> above (install once, all repos). This manual per-repo webhook stays supported for private setups or fine-grained control.</p>
-              
-              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Webhook URL</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">{webhookUrl}?api_key=YOUR_API_KEY</code>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => copyToClipboard(`${webhookUrl}?api_key=YOUR_API_KEY`)}>
-                    <Copy className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="text-[11px] text-muted-foreground space-y-2">
-                <p className="font-medium">Setup (one-time per repo):</p>
-                <ol className="list-decimal ml-4 space-y-1">
-                  <li>Create an API key above if you haven't already</li>
-                  <li>Go to your GitHub repo → <strong>Settings → Webhooks → Add webhook</strong></li>
-                  <li>Paste the Webhook URL above (replace <code className="bg-muted px-1 rounded">YOUR_API_KEY</code> with your actual key)</li>
-                  <li>Set Content type to <code className="bg-muted px-1 rounded">application/json</code></li>
-                  <li>For Secret, you can leave it blank (API key provides authentication) or set one for extra security</li>
-                  <li>Select <strong>"Just the push event"</strong></li>
-                </ol>
-
-                <p className="font-medium pt-2">Commit message tags:</p>
-                <p>Include a <code className="bg-muted px-1 rounded">[stage:xxx]</code> tag in your commit message to move the card:</p>
-                <div className="space-y-1 mt-1">
-                  <p><code className="bg-muted px-1 rounded">git commit -m "Updated methods [stage:draft]"</code></p>
-                  <p><code className="bg-muted px-1 rounded">git commit -m "Submitted to AER [stage:submitted]"</code></p>
-                  <p><code className="bg-muted px-1 rounded">git commit -m "R&R changes [stage:revise_resubmit]"</code></p>
-                </div>
-                <p className="pt-1">Valid tags: <code className="bg-muted px-1 rounded">idea</code> · <code className="bg-muted px-1 rounded">draft</code> · <code className="bg-muted px-1 rounded">submitted</code> · <code className="bg-muted px-1 rounded">revise_resubmit</code> · <code className="bg-muted px-1 rounded">resubmitted</code> · <code className="bg-muted px-1 rounded">accepted</code> · <code className="bg-muted px-1 rounded">published</code></p>
-                <p className="pt-1">Pushes without a tag still link the repo to the card (matched by repo name).</p>
-              </div>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
         <AccordionItem value="quickstart">
           <AccordionTrigger className="text-sm py-2">
             <span className="flex items-center gap-1.5">
@@ -572,173 +408,17 @@ The script should:
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="overleaf">
-          <AccordionTrigger className="text-sm py-2">
-            <span className="flex items-center gap-1.5">
-              <Code className="w-3.5 h-3.5" />
-              Overleaf Integration
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-3">
-              <div className="text-[11px] text-muted-foreground space-y-2">
-                <p className="font-medium text-foreground">Recommended: track Overleaf through GitHub</p>
-                <p>Overleaf is your editor; GitHub is the sync target; the Kabbo
-                  GitHub App watches GitHub. No Overleaf API or premium scripting needed —
-                  and you get LaTeX word-count momentum for free.</p>
-                <ol className="list-decimal ml-4 space-y-1">
-                  <li>In Overleaf: <strong>Menu → Sync → GitHub</strong>, link your project to a repo.</li>
-                  <li>Install the <strong>Kabbo GitHub App</strong> on that repo (the card at the top of this section).</li>
-                  <li>Add <code className="bg-muted px-1 rounded">overleaf_url:</code> to the repo's <code className="bg-muted px-1 rounded">.kabbo.yaml</code> so the card deep-links back to Overleaf.</li>
-                </ol>
-                <p>Now every edit you push from Overleaf updates the card, and the
-                  Draft stage shows how many words you've written this week.</p>
-              </div>
-              <details>
-                <summary className="text-[11px] text-muted-foreground cursor-pointer">Alternative: Overleaf premium git access (script via Claude Code)</summary>
-                <div className="relative mt-2">
-                  <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{overleafPrompt}</pre>
-                  <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(overleafPrompt)}>
-                    <Copy className="w-3 h-3" />
-                  </Button>
-                </div>
-              </details>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="dropbox">
-          <AccordionTrigger className="text-sm py-2">
-            <span className="flex items-center gap-1.5">
-              <FolderSync className="w-3.5 h-3.5" />
-              Dropbox Integration
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Give this prompt to Claude Code to sync papers from your Dropbox folder structure.</p>
-              <div className="relative">
-                <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{dropboxPrompt}</pre>
-                <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(dropboxPrompt)}>
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="github-sync">
-          <AccordionTrigger className="text-sm py-2">
-            <span className="flex items-center gap-1.5">
-              <Github className="w-3.5 h-3.5" />
-              GitHub Full Sync (Claude Code)
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Give this prompt to Claude Code to scan all your GitHub repos and sync them to Kabbo. Complements the webhook for a full periodic reconciliation.</p>
-              <div className="relative">
-                <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{githubSyncPrompt}</pre>
-                <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(githubSyncPrompt)}>
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="kabbo-yaml">
-          <AccordionTrigger className="text-sm py-2">
-            <span className="flex items-center gap-1.5">
-              <FileCode className="w-3.5 h-3.5" />
-              .kabbo.yaml Config Convention
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                Add a <code className="bg-muted px-1 rounded">.kabbo.yaml</code> file to the root of any paper repo to declare its metadata. The webhook and sync scripts auto-discover it – no manual configuration needed.
-              </p>
-
-              <div className="relative">
-                <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{`# .kabbo.yaml – drop this in any paper repo root
-title: "Effect of Climate Policy on Trade Flows"
-stage: draft
-authors:
-  - Alice Smith
-  - Bob Jones
-output_type: journal-article
-target_year: 2025
-themes:
-  - climate
-  - trade
-grants:
-  - ERC-2024-001
-overleaf_url: https://www.overleaf.com/project/abc123
-notes: "Working on methods section"
-links:
-  - https://data.worldbank.org/dataset/xyz`}</pre>
-                <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(`# .kabbo.yaml – drop this in any paper repo root
-title: "Effect of Climate Policy on Trade Flows"
-stage: draft
-authors:
-  - Alice Smith
-  - Bob Jones
-output_type: journal-article
-target_year: 2025
-themes:
-  - climate
-  - trade
-grants:
-  - ERC-2024-001
-overleaf_url: https://www.overleaf.com/project/abc123
-notes: "Working on methods section"
-links:
-  - https://data.worldbank.org/dataset/xyz`)}>
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-
-              <div className="text-[11px] text-muted-foreground space-y-2">
-                <p className="font-medium">How it works:</p>
-                <ul className="list-disc ml-4 space-y-1">
-                  <li><strong>GitHub Webhook:</strong> On every push, the webhook fetches <code className="bg-muted px-1 rounded">.kabbo.yaml</code> from your repo's default branch and applies the metadata automatically.</li>
-                  <li><strong>Claude Code Sync:</strong> The full sync script checks each repo for <code className="bg-muted px-1 rounded">.kabbo.yaml</code> before falling back to repo-name inference.</li>
-                  <li><strong>Commit tags override:</strong> A <code className="bg-muted px-1 rounded">[stage:submitted]</code> commit tag always takes priority over the yaml's stage field.</li>
-                </ul>
-
-                <p className="font-medium pt-2">All supported fields:</p>
-                <div className="space-y-0.5">
-                  <p><code className="bg-muted px-1 rounded">title</code> – Paper title (otherwise inferred from repo name)</p>
-                  <p><code className="bg-muted px-1 rounded">stage</code> – Pipeline stage (idea, draft, submitted, revise_resubmit, resubmitted, accepted, published)</p>
-                  <p><code className="bg-muted px-1 rounded">authors</code> – List of author names</p>
-                  <p><code className="bg-muted px-1 rounded">output_type</code> – journal-article, book, chapter</p>
-                  <p><code className="bg-muted px-1 rounded">target_year</code> – Target completion year</p>
-                  <p><code className="bg-muted px-1 rounded">themes</code> – Research themes/tags</p>
-                  <p><code className="bg-muted px-1 rounded">grants</code> – Associated grant IDs</p>
-                  <p><code className="bg-muted px-1 rounded">overleaf_url</code> – Link to Overleaf project</p>
-                  <p><code className="bg-muted px-1 rounded">notes</code> – Free-text notes</p>
-                  <p><code className="bg-muted px-1 rounded">links</code> – List of related URLs</p>
-                </div>
-
-                <p className="font-medium pt-2">Quick init with Claude Code:</p>
-                <p><em>"Run the sync script with --init to generate .kabbo.yaml templates in all my paper repos"</em></p>
-              </div>
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-
         <AccordionItem value="mcp-server">
           <AccordionTrigger className="text-sm py-2">
             <span className="flex items-center gap-1.5">
               <Server className="w-3.5 h-3.5" />
-              MCP Server (Claude Code Native)
+              MCP Server (Claude Code · Codex · Gemini)
             </span>
           </AccordionTrigger>
           <AccordionContent>
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Connect Claude Code directly to Kabbo using the <strong>Model Context Protocol</strong>. Claude Code can then list, create, update, move, and delete publications natively – no scripts needed.
+                Connect any agent to Kabbo over the <strong>Model Context Protocol</strong>. It can then list, create, update, move, and delete publications natively – no scripts needed. This is the same server the plugin, AGENTS.md, and Gemini config all point at.
               </p>
 
               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
@@ -752,21 +432,15 @@ links:
               </div>
 
               <div className="text-[11px] text-muted-foreground space-y-2">
-                <p className="font-medium">Setup in Claude Code:</p>
+                <p className="font-medium">Setup (Claude Code / Codex):</p>
                 <p>Add to your <code className="bg-muted px-1 rounded">~/.claude/settings.json</code> or project <code className="bg-muted px-1 rounded">.mcp.json</code>:</p>
                 <div className="relative">
-                  <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{`{
-  "mcpServers": {
-    "kabbo": {
-      "type": "url",
-      "url": "${mcpUrl}?api_key=YOUR_API_KEY"
-    }
-  }
-}`}</pre>
-                  <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(`{\n  "mcpServers": {\n    "kabbo": {\n      "type": "url",\n      "url": "${mcpUrl}?api_key=YOUR_API_KEY"\n    }\n  }\n}`)}>
+                  <pre className="text-[11px] bg-muted p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">{mcpConfig}</pre>
+                  <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-6 w-6 p-0" onClick={() => copyToClipboard(mcpConfig)}>
                     <Copy className="w-3 h-3" />
                   </Button>
                 </div>
+                <p className="text-[10px]">For <strong>Gemini CLI</strong>, use the same block in <code className="bg-muted px-1 rounded">~/.gemini/settings.json</code> but rename <code className="bg-muted px-1 rounded">url</code> → <code className="bg-muted px-1 rounded">httpUrl</code> and drop <code className="bg-muted px-1 rounded">type</code> (use the "Copy Gemini config" button above).</p>
 
                 <p className="pt-2 pb-1 font-medium">Test connection:</p>
                 <div className="flex gap-2">
@@ -779,9 +453,9 @@ links:
                     const key = (document.getElementById('mcp-test-key') as HTMLInputElement)?.value;
                     if (!key) { toast.error('Paste an API key first'); return; }
                     try {
-                      const res = await fetch(`${mcpUrl}?api_key=${encodeURIComponent(key)}`, {
+                      const res = await fetch(mcpUrl, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
                         body: JSON.stringify({ jsonrpc: '2.0', method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'kabbo-test', version: '1.0.0' } }, id: 1 }),
                       });
                       if (res.ok) { toast.success('MCP server connected successfully'); }
@@ -813,7 +487,8 @@ links:
                   <p><code className="bg-muted px-1 rounded">get_stalled_papers</code> – Papers inactive for 30+ days, sorted by staleness</p>
                 </div>
 
-                <p className="font-medium pt-2">Example prompts in Claude Code:</p>
+                <p className="font-medium pt-2">Example prompts for your agent:</p>
+                <p><em>"I just submitted the climate paper to the AER — update Kabbo: set the journal, add my co-author, link the data repo, and move it to submitted."</em></p>
                 <p><em>"How's my pipeline looking?"</em></p>
                 <p><em>"Which papers have been stuck longest?"</em></p>
                 <p><em>"How many papers did I publish this year vs last year?"</em></p>
@@ -1032,8 +707,8 @@ export function ProfileSettingsModal({
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="developer" className="flex items-center gap-1">
-              <Code className="w-3 h-3" />
-              Developer
+              <Sparkles className="w-3 h-3" />
+              AI Integration
             </TabsTrigger>
           </TabsList>
 
@@ -1174,7 +849,7 @@ export function ProfileSettingsModal({
                   API Keys
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Generate keys to push publications from external tools (Overleaf, Dropbox, scripts).
+                  Generate a key, then paste it into your agent's MCP config (Claude Code, Codex, or Gemini) so it can read and update your pipeline.
                 </p>
               </div>
               <ApiKeysSection userId={profile.id} />

@@ -80,42 +80,6 @@ export type Database = {
         }
         Relationships: []
       }
-      github_installations: {
-        Row: {
-          account_login: string | null
-          account_type: string | null
-          created_at: string
-          id: string
-          installation_id: number
-          repositories: Json
-          suspended_at: string | null
-          updated_at: string
-          user_id: string | null
-        }
-        Insert: {
-          account_login?: string | null
-          account_type?: string | null
-          created_at?: string
-          id?: string
-          installation_id: number
-          repositories?: Json
-          suspended_at?: string | null
-          updated_at?: string
-          user_id?: string | null
-        }
-        Update: {
-          account_login?: string | null
-          account_type?: string | null
-          created_at?: string
-          id?: string
-          installation_id?: number
-          repositories?: Json
-          suspended_at?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           auto_include_me_in_authors: boolean
@@ -255,8 +219,6 @@ export type Database = {
           created_at: string
           data_sources: string[] | null
           github_repo: string | null
-          github_repo_id: number | null
-          github_subpath: string | null
           grants: string[] | null
           id: string
           links: string[] | null
@@ -273,7 +235,6 @@ export type Database = {
           themes: string[] | null
           title: string
           updated_at: string
-          word_count_history: Json | null
           working_paper: Json | null
         }
         Insert: {
@@ -281,8 +242,6 @@ export type Database = {
           created_at?: string
           data_sources?: string[] | null
           github_repo?: string | null
-          github_repo_id?: number | null
-          github_subpath?: string | null
           grants?: string[] | null
           id?: string
           links?: string[] | null
@@ -299,7 +258,6 @@ export type Database = {
           themes?: string[] | null
           title?: string
           updated_at?: string
-          word_count_history?: Json | null
           working_paper?: Json | null
         }
         Update: {
@@ -307,8 +265,6 @@ export type Database = {
           created_at?: string
           data_sources?: string[] | null
           github_repo?: string | null
-          github_repo_id?: number | null
-          github_subpath?: string | null
           grants?: string[] | null
           id?: string
           links?: string[] | null
@@ -325,7 +281,6 @@ export type Database = {
           themes?: string[] | null
           title?: string
           updated_at?: string
-          word_count_history?: Json | null
           working_paper?: Json | null
         }
         Relationships: []
