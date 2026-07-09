@@ -69,13 +69,36 @@ export function PublicationDrawer({
   const isViewer = isCollaboration && publication?.myRole === 'viewer';
   const canEdit = !isCollaboration || publication?.myRole === 'editor';
 
+  // Seed the local draft only when a *different* card is opened – keyed on id,
+  // not on the object reference. A realtime echo or optimistic update rebuilds
+  // the card object on every `publications` change; depending on `publication`
+  // itself would re-run this effect mid-edit and silently discard whatever the
+  // user was typing. Keying on the id preserves in-progress edits (last write
+  // on close wins).
   useEffect(() => {
     if (publication) {
       setLocalPub({ ...publication });
       fetchCollaborators(publication.id);
       fetchPaperFile(publication.id);
     }
-  }, [publication]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publication?.id]);
+
+  // Closing the drawer must always persist the draft. Escape is owned here (the
+  // draft lives in this component's state), so the global Escape shortcut for
+  // the drawer is disabled in Index to avoid a double-fire.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (localPub) onUpdate(localPub);
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, localPub, onUpdate, onClose]);
 
   const fetchPaperFile = async (publicationId: string) => {
     try {
@@ -301,7 +324,9 @@ export function PublicationDrawer({
     setLocalPub(prev => prev ? { ...prev, ...updates } : null);
   };
 
-  const handleDone = () => {
+  // Every close path routes through this so an edit can never be lost by
+  // closing the drawer (backdrop click, ✕, Escape, or the Done button).
+  const saveAndClose = () => {
     if (localPub) {
       onUpdate(localPub);
     }
@@ -379,9 +404,9 @@ export function PublicationDrawer({
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-foreground/20 z-40 animate-fade-in"
-        onClick={onClose}
+        onClick={saveAndClose}
       />
       
       {/* Drawer */}
@@ -403,7 +428,7 @@ export function PublicationDrawer({
               Created {formatDate(localPub.createdAt)}
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="flex-shrink-0 h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={saveAndClose} className="flex-shrink-0 h-8 w-8">
             <X className="h-4 w-4" />
           </Button>
         </header>
@@ -459,11 +484,27 @@ export function PublicationDrawer({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Completion year</Label>
+              <Label className="text-xs text-muted-foreground">
+                {localPub.stageId === 'published' ? 'Year published' : 'Completion year'}
+              </Label>
               <Input
                 type="number"
                 value={localPub.completionYear}
-                onChange={(e) => canEdit && updateLocal({ completionYear: e.target.value })}
+                onChange={(e) => {
+                  if (!canEdit) return;
+                  const raw = e.target.value;
+                  const patch: Partial<Publication> = { completionYear: raw };
+                  // On a published card the year IS the publication year, so keep
+                  // the numeric publishedYear in sync – that's what the save maps
+                  // to target_year. Leave it untouched when the input is blank or
+                  // invalid so we never write a null year onto a published row
+                  // (the DB CHECK forbids it).
+                  if (localPub.stageId === 'published') {
+                    const n = parseInt(raw, 10);
+                    if (Number.isFinite(n)) patch.publishedYear = n;
+                  }
+                  updateLocal(patch);
+                }}
                 placeholder="e.g., 2026"
                 min={1900}
                 max={2100}
@@ -516,8 +557,9 @@ export function PublicationDrawer({
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">
-                  {localPub.outputType === 'journal' ? 'Intended journal' : 
-                   localPub.outputType === 'book' ? 'Publisher' : 'Book title'}
+                  {localPub.outputType === 'journal'
+                    ? (localPub.stageId === 'published' ? 'Journal' : 'Intended journal')
+                    : localPub.outputType === 'book' ? 'Publisher' : 'Book title'}
                 </Label>
                 <Input
                   value={localPub.typeA}
@@ -910,7 +952,7 @@ export function PublicationDrawer({
               </>
             )}
           </div>
-          <Button onClick={handleDone} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+          <Button onClick={saveAndClose} className="bg-accent hover:bg-accent/90 text-accent-foreground">
             Done
           </Button>
         </footer>

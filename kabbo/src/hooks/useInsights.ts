@@ -254,12 +254,23 @@ export function computeInsights(
   for (const pub of publications) {
     if (pub.stageId !== 'published') continue;
     const ts = lastPublishedTransitionAt(pub);
-    if (ts == null) continue;
-    const d = new Date(ts);
-    if (d.getFullYear() === thisYear) {
-      publishedThisYear++;
-    } else if (d.getFullYear() === lastYear && dayOfYear(d) <= thisDayOfYear) {
-      publishedLastYearByNow++;
+    if (ts != null) {
+      const d = new Date(ts);
+      if (d.getFullYear() === thisYear) {
+        publishedThisYear++;
+      } else if (d.getFullYear() === lastYear && dayOfYear(d) <= thisDayOfYear) {
+        publishedLastYearByNow++;
+      }
+    } else if (typeof pub.publishedYear === 'number') {
+      // Imported / MCP-created published papers carry no stage-history "→
+      // published" transition, so fall back to the numeric publication year –
+      // otherwise they never count toward momentum. A year-only value can't be
+      // day-gated, so a last-year paper counts for the whole year.
+      if (pub.publishedYear === thisYear) {
+        publishedThisYear++;
+      } else if (pub.publishedYear === lastYear) {
+        publishedLastYearByNow++;
+      }
     }
   }
   if (publishedThisYear > 0 || publishedLastYearByNow > 0) {

@@ -4,6 +4,7 @@ import { PubFlowState, Publication, BinItem, DEFAULT_STAGES, HistoryEntry } from
 import { useAuth } from '@/hooks/useAuth';
 import { parseList, createEmptyState } from '@/lib/storage';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
+import { toast } from 'sonner';
 
 interface Filters {
   author: string;
@@ -76,7 +77,7 @@ export function useSupabasePublications() {
         // 1. Owned publications
         supabase
           .from('publications')
-          .select('id, owner_id, title, authors, themes, grants, target_year, target_journal, stage, output_type, notes, links, github_repo, overleaf_link, data_sources, related_papers, working_paper, stage_history, created_at, updated_at')
+          .select('id, owner_id, title, authors, themes, grants, target_year, target_journal, stage, output_type, notes, links, github_repo, overleaf_link, collaboration_links, type_b, type_c, data_sources, related_papers, working_paper, stage_history, created_at, updated_at')
           .eq('owner_id', user.id)
           .order('updated_at', { ascending: false }),
         // 2. Get collaborated publication IDs first
@@ -108,7 +109,7 @@ export function useSupabasePublications() {
         
         const { data: collabPubsData, error: collabPubsError } = await supabase
           .from('publications')
-          .select('id, owner_id, title, authors, themes, grants, target_year, target_journal, stage, output_type, notes, links, github_repo, overleaf_link, data_sources, related_papers, working_paper, stage_history, created_at, updated_at')
+          .select('id, owner_id, title, authors, themes, grants, target_year, target_journal, stage, output_type, notes, links, github_repo, overleaf_link, collaboration_links, type_b, type_c, data_sources, related_papers, working_paper, stage_history, created_at, updated_at')
           .in('id', collabIds)
           .order('updated_at', { ascending: false });
         
@@ -202,8 +203,24 @@ export function useSupabasePublications() {
             });
           } else if (payload.eventType === 'UPDATE') {
             const updatedPub = dbToLocal(payload.new);
-            setPublications(prev => 
-              prev.map(p => p.id === updatedPub.id ? updatedPub : p)
+            // dbToLocal can't reconstruct fields that don't live on the
+            // publications row: isCollaboration/myRole are joined from
+            // publication_collaborators only in loadPublications, and
+            // reminders/collaborators are loaded separately. Preserve them from
+            // the existing card so a realtime echo doesn't strip a viewer's
+            // permission flags (which would let them edit a shared paper).
+            setPublications(prev =>
+              prev.map(p =>
+                p.id === updatedPub.id
+                  ? {
+                      ...updatedPub,
+                      isCollaboration: p.isCollaboration,
+                      myRole: p.myRole,
+                      reminders: p.reminders,
+                      collaborators: p.collaborators,
+                    }
+                  : p
+              )
             );
           } else if (payload.eventType === 'DELETE') {
             const deletedId = (payload.old as any)?.id;
@@ -289,7 +306,15 @@ export function useSupabasePublications() {
   // can always be seen and fixed rather than silently disappearing.
   const publishedByYear = useMemo(() => {
     const currentYear = new Date().getFullYear();
-    const years = Array.from({ length: 7 }, (_, i) => currentYear - i);
+    // Always show the current 7-year window, plus any other year that actually
+    // has published papers – otherwise a paper published before currentYear-6
+    // (common on a long CV) matches no bucket and vanishes entirely. The
+    // FilterBar's year-limit control (up to 20y) decides how many are shown.
+    const windowYears = Array.from({ length: 7 }, (_, i) => currentYear - i);
+    const dataYears = publications
+      .filter(c => c.stageId === 'published' && typeof c.publishedYear === 'number')
+      .map(c => c.publishedYear as number);
+    const years = Array.from(new Set([...windowYears, ...dataYears])).sort((a, b) => b - a);
 
     const byYear: { year: number | 'unknown'; cards: Publication[] }[] = years.map(year => ({
       year,
@@ -502,38 +527,61 @@ export function useSupabasePublications() {
     if ('notes' in updates) dbUpdate.notes = updates.notes;
     if ('outputType' in updates) dbUpdate.output_type = updates.outputType;
     if ('typeA' in updates) dbUpdate.target_journal = (updates.typeA ?? '').trim() || null;
+    if ('typeB' in updates) dbUpdate.type_b = (updates.typeB ?? '').trim() || null;
+    if ('typeC' in updates) dbUpdate.type_c = (updates.typeC ?? '').trim() || null;
     if ('githubRepo' in updates) dbUpdate.github_repo = updates.githubRepo || null;
     if ('overleafLink' in updates) dbUpdate.overleaf_link = updates.overleafLink || null;
+    if ('collaborationLinks' in updates) dbUpdate.collaboration_links = updates.collaborationLinks || [];
     if ('links' in updates) dbUpdate.links = (updates.links || []).map((l: any) => JSON.stringify(l));
     if ('workingPaper' in updates) dbUpdate.working_paper = updates.workingPaper;
     if ('history' in updates) dbUpdate.stage_history = (updates.history || []).map(h => ({ from: h.from, to: h.to, at: h.at }));
     // Year mapping for Published stage – fires whenever the *effective* stage
     // is 'published', regardless of whether the caller included publishedYear
-    // in this payload. Prefer explicit publishedYear → card's publishedYear →
-    // completionYear → current year. This must leave target_year non-null,
-    // otherwise the DB CHECK publications_published_requires_year will reject.
+    // in this payload. An explicit year edit must win: prefer numeric
+    // publishedYear → the completionYear typed in this payload → the card's
+    // publishedYear → the card's completionYear → current year. This must leave
+    // target_year non-null, otherwise the DB CHECK
+    // publications_published_requires_year will reject.
     if (effectiveStage === 'published') {
       const explicit =
         'publishedYear' in updates && typeof updates.publishedYear === 'number'
           ? updates.publishedYear
           : null;
+      const fromUpdatesCompletion =
+        'completionYear' in updates && updates.completionYear
+          ? parseInt(updates.completionYear, 10)
+          : NaN;
       const fromCard = typeof pub?.publishedYear === 'number' ? pub.publishedYear : null;
       const fromCompletion = pub?.completionYear ? parseInt(pub.completionYear, 10) : NaN;
-      const yr = explicit ?? fromCard ?? (Number.isFinite(fromCompletion) ? fromCompletion : NaN);
+      const yr =
+        explicit ??
+        (Number.isFinite(fromUpdatesCompletion) ? fromUpdatesCompletion : null) ??
+        fromCard ??
+        (Number.isFinite(fromCompletion) ? fromCompletion : NaN);
       dbUpdate.target_year = Number.isFinite(yr) ? yr : new Date().getFullYear();
     }
 
-    await executeOrQueue(
-      { type: 'update', table: 'publications', data: dbUpdate, filters: { column: 'id', value: id } },
-      async () => {
-        const { error } = await supabase
-          .from('publications')
-          .update(dbUpdate)
-          .eq('id', id);
-        if (error) throw error;
-      }
-    );
-  }, [user?.id, executeOrQueue]);
+    try {
+      await executeOrQueue(
+        { type: 'update', table: 'publications', data: dbUpdate, filters: { column: 'id', value: id } },
+        async () => {
+          const { error } = await supabase
+            .from('publications')
+            .update(dbUpdate)
+            .eq('id', id);
+          if (error) throw error;
+        }
+      );
+    } catch (err) {
+      // A non-network write failure (RLS, CHECK violation) would otherwise be
+      // swallowed while the optimistic edit stays on screen – looking saved but
+      // vanishing on reload. Surface it and re-sync from the server so the UI
+      // never lies about a save.
+      console.error('updatePublication failed:', err);
+      toast.error('Could not save your change – reverted to the last saved version.');
+      loadPublications();
+    }
+  }, [user?.id, executeOrQueue, loadPublications]);
 
   // Move publication to stage
   const moveToStage = useCallback(async (cardId: string, newStageId: string, publishedYear?: number) => {
@@ -561,13 +609,19 @@ export function useSupabasePublications() {
     const updatedHistory = [...card.history, historyEntry];
     const newPublishedYear = newStageId === 'published' ? (publishedYear ?? new Date().getFullYear()) : card.publishedYear;
 
-    // Optimistically update local state
+    // Optimistically update local state. When filing into Published, mirror the
+    // resolved year into completionYear too so the drawer's "Year published"
+    // field shows the right value immediately rather than only after a reload.
     setPublications(prev => prev.map(c =>
       c.id === cardId
         ? {
             ...c,
             stageId: newStageId,
             publishedYear: newPublishedYear,
+            completionYear:
+              newStageId === 'published' && typeof newPublishedYear === 'number'
+                ? String(newPublishedYear)
+                : c.completionYear,
             updatedAt: now,
             history: updatedHistory,
           }
@@ -577,55 +631,93 @@ export function useSupabasePublications() {
     // Update in database
     const updateData = {
       stage: newStageId,
-      target_year: newStageId === 'published' 
+      target_year: newStageId === 'published'
         ? (typeof newPublishedYear === 'number' ? newPublishedYear : new Date().getFullYear())
         : (card.completionYear ? parseInt(card.completionYear) : null),
       updated_at: now,
       stage_history: updatedHistory.map(h => ({ from: h.from, to: h.to, at: h.at })),
     };
-    
-    await executeOrQueue(
-      { type: 'update', table: 'publications', data: updateData, filters: { column: 'id', value: cardId } },
-      async () => {
-        const { error } = await supabase
-          .from('publications')
-          .update(updateData)
-          .eq('id', cardId);
-        if (error) throw error;
-      }
-    );
-  }, [user?.id, executeOrQueue]);
+
+    try {
+      await executeOrQueue(
+        { type: 'update', table: 'publications', data: updateData, filters: { column: 'id', value: cardId } },
+        async () => {
+          const { error } = await supabase
+            .from('publications')
+            .update(updateData)
+            .eq('id', cardId);
+          if (error) throw error;
+        }
+      );
+    } catch (err) {
+      console.error('moveToStage failed:', err);
+      toast.error('Could not move the publication – reverted to its previous stage.');
+      loadPublications();
+    }
+  }, [user?.id, executeOrQueue, loadPublications]);
 
   // Undo last move
   const undo = useCallback(async () => {
     const last = undoStack[undoStack.length - 1];
     if (!last || !user?.id) return;
 
+    const card = publicationsRef.current.find(c => c.id === last.cardId);
     const now = new Date().toISOString();
+
+    // Drop the history entry this move added (only if it's still the last one),
+    // so an undone publish doesn't linger in the stage history and keep getting
+    // counted as a publication by the insights engine.
+    let revertedHistory = card ? [...card.history] : [];
+    const lastEntry = revertedHistory[revertedHistory.length - 1];
+    if (lastEntry && lastEntry.from === last.fromStage && lastEntry.to === last.toStage) {
+      revertedHistory = revertedHistory.slice(0, -1);
+    }
+
+    // Restore the year state. Reverting a move *into* published clears the
+    // publication year; reverting a move *out of* published restores it.
+    const revertedPublishedYear: number | '' | 'unknown' =
+      last.fromStage === 'published'
+        ? (card && typeof card.publishedYear === 'number' ? card.publishedYear : 'unknown')
+        : '';
+    const revertedTargetYear =
+      last.fromStage === 'published'
+        ? (typeof revertedPublishedYear === 'number' ? revertedPublishedYear : new Date().getFullYear())
+        : (card?.completionYear ? parseInt(card.completionYear, 10) : null);
 
     // Optimistically update
     setPublications(prev => prev.map(c =>
       c.id === last.cardId
-        ? { ...c, stageId: last.fromStage, updatedAt: now }
+        ? { ...c, stageId: last.fromStage, publishedYear: revertedPublishedYear, history: revertedHistory, updatedAt: now }
         : c
     ));
 
     setUndoStack(stack => stack.slice(0, -1));
 
     // Update in database
-    const updateData = { stage: last.fromStage, updated_at: now };
-    
-    await executeOrQueue(
-      { type: 'update', table: 'publications', data: updateData, filters: { column: 'id', value: last.cardId } },
-      async () => {
-        const { error } = await supabase
-          .from('publications')
-          .update(updateData)
-          .eq('id', last.cardId);
-        if (error) throw error;
-      }
-    );
-  }, [undoStack, user?.id, executeOrQueue]);
+    const updateData = {
+      stage: last.fromStage,
+      target_year: revertedTargetYear,
+      stage_history: revertedHistory.map(h => ({ from: h.from, to: h.to, at: h.at })),
+      updated_at: now,
+    };
+
+    try {
+      await executeOrQueue(
+        { type: 'update', table: 'publications', data: updateData, filters: { column: 'id', value: last.cardId } },
+        async () => {
+          const { error } = await supabase
+            .from('publications')
+            .update(updateData)
+            .eq('id', last.cardId);
+          if (error) throw error;
+        }
+      );
+    } catch (err) {
+      console.error('undo failed:', err);
+      toast.error('Could not undo – reverted to the saved version.');
+      loadPublications();
+    }
+  }, [undoStack, user?.id, executeOrQueue, loadPublications]);
 
   // Move to bin
   const moveToBin = useCallback(async (cardId: string, reason = '') => {
@@ -877,6 +969,11 @@ export function useSupabasePublications() {
       createdAt: now,
       updatedAt: now,
       history: [],
+      // The copy is owned by the current user – never carry the source's
+      // collaboration flags, or the duplicate would render (and gate edits) as
+      // a shared publication until the next reload.
+      isCollaboration: false,
+      myRole: undefined,
     };
 
     // Optimistically update

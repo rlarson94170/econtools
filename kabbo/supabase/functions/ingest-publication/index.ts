@@ -134,14 +134,16 @@ Deno.serve(async (req) => {
 
     const normalizedStage = stage ? normalizeStage(stage) : undefined;
 
-    // Try to find existing publication by title (case-insensitive)
+    // Try to find existing publication by title (case-insensitive). maybeSingle
+    // returns null (not an error) when there's no match – .single() would error
+    // on the common zero-row case.
     const { data: existing } = await supabase
       .from("publications")
-      .select("id, title, stage")
+      .select("id, title, stage, target_year")
       .eq("owner_id", userId)
       .ilike("title", title.trim())
       .limit(1)
-      .single();
+      .maybeSingle();
 
     const pubData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -160,8 +162,24 @@ Deno.serve(async (req) => {
       pubData.grants = Array.isArray(grants) ? grants : [grants];
     if (overleaf_url !== undefined) pubData.overleaf_link = overleaf_url;
     if (github_repo !== undefined) pubData.github_repo = github_repo;
-    if (links !== undefined)
-      pubData.links = Array.isArray(links) ? links : [links];
+    // Links are stored as JSON strings client-side; stringify objects so they
+    // don't round-trip back as "[object Object]".
+    if (links !== undefined) {
+      const arr = Array.isArray(links) ? links : [links];
+      pubData.links = arr.map((l) => (typeof l === "string" ? l : JSON.stringify(l)));
+    }
+
+    // published-requires-year CHECK: never write a published row without a year.
+    // Prefer an explicit year, then the existing row's year, then current year
+    // (matches the web client). Only defaults when the year is truly absent, so
+    // an update that leaves the year alone keeps it.
+    const effectiveStage = (pubData.stage as string | undefined) ?? existing?.stage;
+    if (
+      effectiveStage === "published" &&
+      (pubData.target_year === undefined || pubData.target_year === null)
+    ) {
+      pubData.target_year = existing?.target_year ?? new Date().getFullYear();
+    }
 
     let resultId: string;
     let action: string;

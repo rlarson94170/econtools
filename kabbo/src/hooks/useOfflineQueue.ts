@@ -140,35 +140,39 @@ export function useOfflineQueue() {
     setIsSyncing(true);
     
     let successCount = 0;
-    const failedOps: QueuedOperation[] = [];
-    
+    const successIds = new Set<string>();
+
     // Process in order
     for (const op of queue) {
       const success = await processOperation(op);
       if (success) {
         successCount++;
-      } else {
-        failedOps.push(op);
+        successIds.add(op.id);
       }
     }
-    
-    // Save any failed operations back to queue
-    saveQueue(failedOps);
-    
+
+    const failedCount = queue.length - successCount;
+
+    // Re-read the queue rather than overwriting it with just the failures:
+    // the user may have queued more operations while this sync was awaiting the
+    // network. Drop only the ids we actually processed; failures and any
+    // newly-queued ops both survive.
+    saveQueue(getQueue().filter(op => !successIds.has(op.id)));
+
     syncingRef.current = false;
     setIsSyncing(false);
-    
+
     if (successCount > 0) {
       toast({
         title: 'Synced',
         description: `${successCount} offline change${successCount > 1 ? 's' : ''} saved.`,
       });
     }
-    
-    if (failedOps.length > 0) {
+
+    if (failedCount > 0) {
       toast({
         title: 'Sync incomplete',
-        description: `${failedOps.length} change${failedOps.length > 1 ? 's' : ''} failed to sync.`,
+        description: `${failedCount} change${failedCount > 1 ? 's' : ''} failed to sync.`,
         variant: 'destructive',
       });
     }

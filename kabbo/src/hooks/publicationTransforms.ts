@@ -13,13 +13,19 @@ import { parseList } from '@/lib/storage';
 
 // Convert database publication row → React Publication.
 export function dbToLocal(dbPub: any): Publication {
-  // Migrate legacy github/overleaf to collaborationLinks.
-  const collaborationLinks: any[] = [];
-  if (dbPub.github_repo) {
-    collaborationLinks.push({ type: 'github', url: dbPub.github_repo });
-  }
-  if (dbPub.overleaf_link) {
-    collaborationLinks.push({ type: 'overleaf', url: dbPub.overleaf_link });
+  // Prefer the persisted collaboration_links array; fall back to deriving from
+  // the legacy github_repo/overleaf_link scalars when it's absent or empty
+  // (rows created before the collaboration_links column existed).
+  const collaborationLinks: any[] = Array.isArray(dbPub.collaboration_links)
+    ? [...dbPub.collaboration_links]
+    : [];
+  if (collaborationLinks.length === 0) {
+    if (dbPub.github_repo) {
+      collaborationLinks.push({ type: 'github', url: dbPub.github_repo });
+    }
+    if (dbPub.overleaf_link) {
+      collaborationLinks.push({ type: 'overleaf', url: dbPub.overleaf_link });
+    }
   }
 
   return {
@@ -36,8 +42,15 @@ export function dbToLocal(dbPub: any): Publication {
     // ("Intended journal" / "Publisher" / "Book title") but it's one column
     // backed by target_journal in the DB.
     typeA: dbPub.target_journal || '',
-    typeB: '',
-    typeC: '',
+    // typeB (chapter book-title) / typeC (chapter editors) round-trip through
+    // their own columns – dropping them here silently lost imported chapter
+    // metadata.
+    typeB: dbPub.type_b || '',
+    typeC: dbPub.type_c || '',
+    // Raw passthrough so client-side writes (duplicate, bin restore) don't drop
+    // data the MCP tools populate. Not surfaced in the drawer.
+    dataSources: Array.isArray(dbPub.data_sources) ? dbPub.data_sources : [],
+    relatedPapers: Array.isArray(dbPub.related_papers) ? dbPub.related_papers : [],
     workingPaper: dbPub.working_paper || { on: false, series: '', number: '', url: '' },
     notes: dbPub.notes || '',
     links: (dbPub.links || []).map((l: string) => {
@@ -85,14 +98,25 @@ export function localToDb(pub: Publication, userId: string): {
   links: string[];
   github_repo: string | null;
   overleaf_link: string | null;
+  collaboration_links: any[];
+  type_b: string | null;
+  type_c: string | null;
+  data_sources: string[];
+  related_papers: string[];
   working_paper: any;
   stage_history: any[];
 } {
-  const targetYear = pub.completionYear
-    ? parseInt(pub.completionYear)
-    : typeof pub.publishedYear === 'number'
+  // For a published card the publication year (publishedYear) is authoritative;
+  // completionYear is a UI mirror of the same target_year and can drift on
+  // paths that build a row from a stale snapshot (bin restore, duplicate).
+  const targetYear =
+    pub.stageId === 'published' && typeof pub.publishedYear === 'number'
       ? pub.publishedYear
-      : null;
+      : pub.completionYear
+        ? parseInt(pub.completionYear)
+        : typeof pub.publishedYear === 'number'
+          ? pub.publishedYear
+          : null;
 
   return {
     id: pub.id,
@@ -109,6 +133,11 @@ export function localToDb(pub: Publication, userId: string): {
     links: pub.links.map((l) => JSON.stringify(l)),
     github_repo: pub.githubRepo || null,
     overleaf_link: pub.overleafLink || null,
+    collaboration_links: pub.collaborationLinks || [],
+    type_b: pub.typeB?.trim() || null,
+    type_c: pub.typeC?.trim() || null,
+    data_sources: pub.dataSources || [],
+    related_papers: pub.relatedPapers || [],
     working_paper: pub.workingPaper,
     stage_history: pub.history.map((h) => ({ from: h.from, to: h.to, at: h.at })),
   };

@@ -208,7 +208,10 @@ const Index = () => {
     onOpenStats: handleOpenStats,
     onOpenBibtex: handleOpenBibtex,
     onUndo: canUndo ? handleUndo : undefined,
-    onCloseDrawer: selectedCardId ? handleCloseDrawer : undefined,
+    // Escape-to-close for the publication drawer is owned by the drawer itself
+    // (it saves the draft before closing); leaving it wired here too would
+    // double-fire and, worse, close without saving.
+    onCloseDrawer: undefined,
     onOpenBin: handleOpenBin,
     onOpenHelp: handleOpenHelp,
     onExportPdf: handleExportPdfOpen,

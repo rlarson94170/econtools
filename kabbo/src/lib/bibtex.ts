@@ -20,9 +20,13 @@ export function generateBibtex(publications: Publication[]): string {
         fields.push(`  author = {${escapeBibtex(authors)}}`);
       }
       
-      // Year
-      if (pub.publishedYear || pub.completionYear) {
-        fields.push(`  year = {${pub.publishedYear || pub.completionYear}}`);
+      // Year. publishedYear can be the 'unknown' sentinel for published rows
+      // with no year – treat that as absent rather than emitting year={unknown}.
+      const year = typeof pub.publishedYear === 'number'
+        ? String(pub.publishedYear)
+        : pub.completionYear;
+      if (year) {
+        fields.push(`  year = {${year}}`);
       }
       
       // Journal/publisher/booktitle based on output type
@@ -53,8 +57,10 @@ function generateBibtexKey(pub: Publication): string {
   const firstAuthor = authors[0]?.trim() || 'Unknown';
   const lastName = firstAuthor.split(' ').pop() || 'Unknown';
   
-  // Get year
-  const year = pub.publishedYear || pub.completionYear || 'XXXX';
+  // Get year ('unknown' sentinel → fall back to completionYear / placeholder)
+  const year = typeof pub.publishedYear === 'number'
+    ? pub.publishedYear
+    : (pub.completionYear || 'XXXX');
   
   // Get first word of title (excluding articles)
   const titleWords = pub.title.split(' ').filter(w => 

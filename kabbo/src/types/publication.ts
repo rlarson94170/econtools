@@ -80,6 +80,10 @@ export interface Publication {
   // Legacy fields for backwards compatibility
   githubRepo?: string;
   overleafLink?: string;
+  // Raw DB passthrough (TEXT[] columns populated by the MCP tools). Not edited
+  // in the drawer; carried so client-side writes never drop them.
+  dataSources?: string[];
+  relatedPapers?: string[];
   // Reminders attached to this publication
   reminders: Reminder[];
   // Collaborators on this publication

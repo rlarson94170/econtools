@@ -228,10 +228,13 @@ export type Database = {
           owner_id: string
           paper_file_path: string | null
           related_papers: string[] | null
+          collaboration_links: Json | null
           stage: string
           stage_history: Json[] | null
           target_journal: string | null
           target_year: number | null
+          type_b: string | null
+          type_c: string | null
           themes: string[] | null
           title: string
           updated_at: string
@@ -251,10 +254,13 @@ export type Database = {
           owner_id: string
           paper_file_path?: string | null
           related_papers?: string[] | null
+          collaboration_links?: Json | null
           stage?: string
           stage_history?: Json[] | null
           target_journal?: string | null
           target_year?: number | null
+          type_b?: string | null
+          type_c?: string | null
           themes?: string[] | null
           title?: string
           updated_at?: string
@@ -274,10 +280,13 @@ export type Database = {
           owner_id?: string
           paper_file_path?: string | null
           related_papers?: string[] | null
+          collaboration_links?: Json | null
           stage?: string
           stage_history?: Json[] | null
           target_journal?: string | null
           target_year?: number | null
+          type_b?: string | null
+          type_c?: string | null
           themes?: string[] | null
           title?: string
           updated_at?: string

@@ -134,10 +134,11 @@ async function handlePatch(
 
   if (!id) return jsonResponse({ error: "id is required" }, 400);
 
-  // Verify ownership
+  // Verify ownership (and read the current year so we can honour the
+  // published-requires-year CHECK below).
   const { data: existing } = await supabase
     .from("publications")
-    .select("id")
+    .select("id, target_year")
     .eq("id", id)
     .eq("owner_id", userId)
     .single();
@@ -160,7 +161,20 @@ async function handlePatch(
   if (grants !== undefined) updates.grants = Array.isArray(grants) ? grants : [grants];
   if (overleaf_url !== undefined) updates.overleaf_link = overleaf_url;
   if (github_repo !== undefined) updates.github_repo = github_repo;
-  if (links !== undefined) updates.links = Array.isArray(links) ? links : [links];
+  // Links are stored as JSON strings client-side (dbToLocal JSON.parses them);
+  // stringify any object here so they don't come back as "[object Object]".
+  if (links !== undefined) {
+    const arr = Array.isArray(links) ? links : [links];
+    updates.links = arr.map((l) => (typeof l === "string" ? l : JSON.stringify(l)));
+  }
+
+  // The DB CHECK forbids a published row with a null target_year. If this PATCH
+  // moves the row to published without a year, default to the current one
+  // (mirrors the web client) rather than letting Postgres 500.
+  if (updates.stage === "published") {
+    const yr = (updates.target_year as number | null | undefined) ?? existing.target_year;
+    updates.target_year = yr ?? new Date().getFullYear();
+  }
 
   const { error } = await supabase.from("publications").update(updates).eq("id", id);
   if (error) return jsonResponse({ error: error.message }, 500);

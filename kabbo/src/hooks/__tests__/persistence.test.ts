@@ -71,6 +71,18 @@ describe('localToDb', () => {
     const row = localToDb(pub, 'user-1');
     expect(row.title).toBe('Untitled');
   });
+
+  it('writes target_journal from typeA', () => {
+    const row = localToDb(basePub({ typeA: 'American Economic Review' }), 'user-1');
+    expect(row.target_journal).toBe('American Economic Review');
+  });
+
+  it('prefers publishedYear over completionYear for a published row', () => {
+    // A published card's publication year is authoritative; completionYear is a
+    // UI mirror that can drift on bin-restore/duplicate snapshots.
+    const pub = basePub({ stageId: 'published', publishedYear: 2024, completionYear: '2019' });
+    expect(localToDb(pub, 'user-1').target_year).toBe(2024);
+  });
 });
 
 describe('dbToLocal', () => {
@@ -81,6 +93,10 @@ describe('dbToLocal', () => {
       completionYear: '2024',
       title: 'The Wealth of Nations',
       authors: 'Smith',
+      typeA: 'Econometrica',
+      typeB: 'Handbook of Economics',
+      typeC: 'Editor One, Editor Two',
+      collaborationLinks: [{ type: 'github', url: 'https://github.com/x/y' }],
     });
     const row = localToDb(pub, 'user-1');
     const full = { ...row, id: pub.id, created_at: pub.createdAt, updated_at: pub.updatedAt };
@@ -91,6 +107,24 @@ describe('dbToLocal', () => {
     expect(back.stageId).toBe('published');
     expect(back.publishedYear).toBe(2024);
     expect(back.completionYear).toBe('2024');
+    // Fields that previously round-tripped to empty (silent data loss).
+    expect(back.typeA).toBe('Econometrica');
+    expect(back.typeB).toBe('Handbook of Economics');
+    expect(back.typeC).toBe('Editor One, Editor Two');
+    expect(back.collaborationLinks).toEqual([{ type: 'github', url: 'https://github.com/x/y' }]);
+  });
+
+  it('reads collaboration_links from its own column, ignoring the legacy fallback', () => {
+    const pub = basePub({
+      collaborationLinks: [
+        { type: 'overleaf', url: 'https://overleaf.com/p' },
+        { type: 'custom', label: 'Data', url: 'https://example.org' },
+      ],
+    });
+    const row = localToDb(pub, 'user-1');
+    const back = dbToLocal({ ...row, id: pub.id, created_at: pub.createdAt, updated_at: pub.updatedAt });
+    expect(back.collaborationLinks).toHaveLength(2);
+    expect(back.collaborationLinks[1]).toEqual({ type: 'custom', label: 'Data', url: 'https://example.org' });
   });
 
   it('marks a published row with null target_year as "unknown" – never hides it', () => {
@@ -152,7 +186,11 @@ describe('publishedByYear grouping (logic mirrored from useSupabasePublications)
   // Keep this in sync with the memo at src/hooks/useSupabasePublications.ts.
   function publishedByYear(publications: Publication[]): { year: number | 'unknown'; cards: Publication[] }[] {
     const currentYear = 2026;
-    const years = Array.from({ length: 7 }, (_, i) => currentYear - i);
+    const windowYears = Array.from({ length: 7 }, (_, i) => currentYear - i);
+    const dataYears = publications
+      .filter((c) => c.stageId === 'published' && typeof c.publishedYear === 'number')
+      .map((c) => c.publishedYear as number);
+    const years = Array.from(new Set([...windowYears, ...dataYears])).sort((a, b) => b - a);
 
     const byYear: { year: number | 'unknown'; cards: Publication[] }[] = years.map((year) => ({
       year,
@@ -200,24 +238,24 @@ describe('publishedByYear grouping (logic mirrored from useSupabasePublications)
     expect(buckets.find((b) => b.year === 'unknown')).toBeUndefined();
   });
 
-  it('never drops a published row from every bucket within the 7-year window', () => {
-    // Regression-prevention invariant. Every published row whose year falls
-    // inside the 7-year window (currentYear down to currentYear-6), OR whose
-    // publishedYear is 'unknown', MUST appear in exactly one bucket. If this
-    // test fails, the UI is hiding data again.
-    //
-    // Rows older than 7 years (e.g. published in 2018 when currentYear=2026)
-    // are intentionally excluded at the hook level – the FilterBar has a
-    // separate year-limit control for those.
+  it('keeps every published row visible, including years older than the 7-year window', () => {
+    // Regression-prevention invariant. Every published row – whether its year is
+    // inside the current 7-year window, older than it, or the 'unknown' sentinel
+    // – MUST appear in exactly one bucket. Previously the hook hard-capped at 7
+    // years, so a paper published before currentYear-6 matched no bucket and
+    // vanished entirely. The union-of-data-years fix gives any year with data a
+    // bucket; the FilterBar's year-limit (up to 20y) then decides how many show.
     const pubs = [
       basePub({ id: 'a', stageId: 'published', publishedYear: 2024 }),
       basePub({ id: 'b', stageId: 'published', publishedYear: 'unknown' }),
-      basePub({ id: 'c', stageId: 'published', publishedYear: 2020 }), // inside 7y window
+      basePub({ id: 'c', stageId: 'published', publishedYear: 2020 }), // inside window
+      basePub({ id: 'd', stageId: 'published', publishedYear: 2015 }), // older than window
     ];
     const buckets = publishedByYear(pubs);
     const everyVisible = pubs.every((p) =>
       buckets.some((b) => b.cards.some((c) => c.id === p.id)),
     );
     expect(everyVisible).toBe(true);
+    expect(buckets.some((b) => b.year === 2015)).toBe(true);
   });
 });

@@ -91,7 +91,7 @@ export function createEmptyState(): PubFlowState {
       themes: 'Autobiography, Science',
       grants: '',
       completionYear: '2025',
-      stageId: 'resubmit',
+      stageId: 'resubmitted',
       outputType: 'journal',
       typeA: 'Annals of Improbable Research',
       typeB: '',

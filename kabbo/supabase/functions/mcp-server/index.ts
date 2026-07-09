@@ -131,7 +131,7 @@ function createMcpServer(apiKey: string) {
       required: ["title"],
     },
     handler: async (params: Record<string, unknown>) => {
-      const url = `${SUPABASE_URL}/functions/v1/ingest-publications`;
+      const url = `${SUPABASE_URL}/functions/v1/ingest-publication`;
       const res = await fetch(url, {
         method: "POST",
         headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
@@ -252,6 +252,15 @@ function createMcpServer(apiKey: string) {
     },
     handler: async (params: Record<string, unknown>) => {
       const { userId, supabase } = await getAuthenticatedUser(apiKey);
+      const limit = Math.min(Number(params.limit) || 50, 200);
+
+      // author/theme/grant are text[] columns; PostgREST `.contains` only does
+      // exact element matches, but the tool advertises *partial* matching (so
+      // "Fourie" should find "Johan Fourie"). Filter those in JS instead. When
+      // we do, fetch a wider window first and slice afterwards so we don't cap
+      // results before filtering.
+      const needsPostFilter = !!(params.author || params.theme || params.grant);
+
       let q = supabase
         .from("publications")
         .select("id, title, authors, stage, notes, themes, grants, target_year, output_type, updated_at")
@@ -260,16 +269,22 @@ function createMcpServer(apiKey: string) {
       if (params.stage) q = q.eq("stage", String(params.stage));
       if (params.year) q = q.eq("target_year", Number(params.year));
       if (params.query) q = q.or(`title.ilike.%${params.query}%,notes.ilike.%${params.query}%`);
-      if (params.author) q = q.contains("authors", [String(params.author)]);
-      if (params.theme) q = q.contains("themes", [String(params.theme)]);
-      if (params.grant) q = q.contains("grants", [String(params.grant)]);
 
-      const limit = Math.min(Number(params.limit) || 50, 200);
-      q = q.order("updated_at", { ascending: false }).limit(limit);
+      q = q.order("updated_at", { ascending: false }).limit(needsPostFilter ? 1000 : limit);
 
       const { data, error } = await q;
       if (error) throw error;
-      return textResult({ count: (data || []).length, publications: data });
+
+      let rows = data || [];
+      const matchArr = (arr: unknown, needle: string) =>
+        Array.isArray(arr) &&
+        arr.some((v) => String(v).toLowerCase().includes(needle.toLowerCase()));
+      if (params.author) rows = rows.filter((r) => matchArr(r.authors, String(params.author)));
+      if (params.theme) rows = rows.filter((r) => matchArr(r.themes, String(params.theme)));
+      if (params.grant) rows = rows.filter((r) => matchArr(r.grants, String(params.grant)));
+      if (needsPostFilter) rows = rows.slice(0, limit);
+
+      return textResult({ count: rows.length, publications: rows });
     },
   });
 
@@ -695,7 +710,7 @@ function createMcpServer(apiKey: string) {
         if (e.journal || e.journaltitle) body.target_journal = e.journal || e.journaltitle;
         if (e._type === "book") body.output_type = "book";
         else if (e._type === "incollection" || e._type === "inbook") body.output_type = "chapter";
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/ingest-publications`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ingest-publication`, {
           method: "POST",
           headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
           body: JSON.stringify(body),
